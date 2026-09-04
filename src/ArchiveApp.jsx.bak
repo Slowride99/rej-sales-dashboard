@@ -1,0 +1,687 @@
+import { useState, useEffect, useCallback } from "react";
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const headers = {
+  apikey: SUPABASE_KEY,
+  Authorization: `Bearer ${SUPABASE_KEY}`,
+  "Content-Type": "application/json",
+};
+
+const YEARS = [2026,2025,2024,2023,2022,2021,2020,2019,2018,2017];
+
+// Market keyword groups — each entry searches event_name for any of its terms
+const MARKETS = [
+  { label: "Minnesota (MN)",      terms: ["MN", "Minnesota"] },
+  { label: "Illinois (IL/Chicago)", terms: ["IL", "Chicago", "Chicagoland"] },
+  { label: "Texas — Houston",     terms: ["Houston"] },
+  { label: "Texas — DFW",         terms: ["DFW", "Dallas", "Fort Worth", "Collin County", "North Texas"] },
+  { label: "Texas — Austin",      terms: ["Austin"] },
+  { label: "Texas — San Antonio", terms: ["San Antonio"] },
+  { label: "Kansas City",         terms: ["Kansas City"] },
+  { label: "Detroit",             terms: ["Detroit"] },
+  { label: "Columbus",            terms: ["Columbus"] },
+  { label: "Cleveland",           terms: ["Cleveland"] },
+  { label: "Indianapolis",        terms: ["Indianapolis"] },
+  { label: "Cincinnati",          terms: ["Cincinnati"] },
+  { label: "Omaha",               terms: ["Omaha"] },
+  { label: "Milwaukee/Madison",   terms: ["Milwaukee", "Madison"] },
+  { label: "Nashville",           terms: ["Nashville"] },
+  { label: "St. Louis",           terms: ["St. Louis"] },
+  { label: "National/Other",      terms: ["National", "Net Lease", "Fargo", "Rochester", "St. Cloud", "Owatonna", "Bozeman", "Louisville", "Miami"] },
+];
+
+// Event names containing these words are test/cancelled events — always hidden
+const TEST_WORDS = ["test", "do not use", "delete", "cancelled", "canceled", "ignore", "alan test"];
+
+// ── CSV export ────────────────────────────────────────────────
+function exportCSV(rows, filename) {
+  if (!rows.length) return;
+  const cols = Object.keys(rows[0]);
+  const csv = [
+    cols.join(","),
+    ...rows.map((r) =>
+      cols.map((c) => `"${String(r[c] ?? "").replace(/"/g, '""')}"`).join(",")
+    ),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+// ── Build year filter string for Supabase ─────────────────────
+// If multiple years selected, use or=(event_date.gte.2024-01-01,event_date.lte.2024-12-31,...)
+// Supabase OR filter for multiple year ranges
+function applyYearFilter(url, dateCol, selectedYears) {
+  if (selectedYears.size === 0) return;
+  if (selectedYears.size === 1) {
+    const y = [...selectedYears][0];
+    url.searchParams.set(dateCol, `gte.${y}-01-01`);
+    // use and param for lte
+    url.searchParams.set(`${dateCol}`, `gte.${y}-01-01`);
+    // Supabase supports range via two separate params with same key — use append trick
+    // Actually set gte and rely on lte via a second param key workaround not supported cleanly
+    // Better: just use gte + lte via the and query param
+    url.searchParams.delete(dateCol);
+    url.searchParams.set("and", `(${dateCol}.gte.${y}-01-01,${dateCol}.lte.${y}-12-31)`);
+  } else {
+    const sorted = [...selectedYears].sort();
+    const parts = sorted.map(y => `and(${dateCol}.gte.${y}-01-01,${dateCol}.lte.${y}-12-31)`);
+    url.searchParams.set("or", `(${parts.join(",")})`);
+  }
+}
+
+// ── Styles ────────────────────────────────────────────────────
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Serif+Display&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0d0f14;
+    --surface: #161921;
+    --border:  #252933;
+    --accent:  #c8a96e;
+    --text:    #e8eaf0;
+    --muted:   #6b7280;
+    --radius:  6px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Serif Display', serif;
+    font-size: 16px; color: #0d0f14; font-weight: 700;
+  }
+  .header-title { font-family: 'DM Serif Display', serif; font-size: 18px; color: var(--text); }
+  .header-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+
+  .tabs {
+    display: flex; gap: 2px;
+    padding: 16px 32px 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .tab {
+    padding: 10px 20px; font-size: 13px; font-weight: 500;
+    color: var(--muted); cursor: pointer; border: none; background: none;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .main { padding: 24px 32px; }
+
+  .filters {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin-bottom: 16px; align-items: flex-start;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 4px; }
+  .filter-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+  input, select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+  select option { background: var(--surface); }
+
+  /* Year checkboxes */
+  .year-checks {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding: 6px 0;
+  }
+  .year-check {
+    display: flex; align-items: center; gap: 5px;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 12px;
+    color: var(--muted);
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .year-check:hover { border-color: var(--accent); color: var(--text); }
+  .year-check.checked {
+    background: rgba(200,169,110,0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .year-check input[type="checkbox"] { display: none; }
+
+  .btn {
+    padding: 8px 16px; border-radius: var(--radius);
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    border: none; font-family: 'Inter', sans-serif;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: var(--accent); color: #0d0f14; }
+  .btn-ghost { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  .stats-bar {
+    display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 12px;
+  }
+  .stats-count { font-size: 13px; color: var(--muted); }
+  .stats-count span { color: var(--accent); font-weight: 600; }
+
+  .table-wrap {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: auto; max-height: calc(100vh - 340px);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead { position: sticky; top: 0; z-index: 1; }
+  th {
+    background: #1a1d26; padding: 10px 14px; text-align: left;
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  td {
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    font-size: 13px; color: var(--text);
+    max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(200,169,110,0.04); }
+
+  .pagination {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 16px; justify-content: flex-end;
+  }
+  .page-info { font-size: 13px; color: var(--muted); }
+
+  .state-box { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .state-box .icon { font-size: 32px; margin-bottom: 12px; }
+
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-size: 11px; font-weight: 500;
+    background: rgba(200,169,110,0.15); color: var(--accent);
+  }
+
+  .thumb-cell { display: flex; align-items: center; gap: 8px; }
+  .thumb {
+    width: 36px; height: 36px; object-fit: contain;
+    border-radius: 4px; background: #1a1d26;
+    border: 1px solid var(--border); flex-shrink: 0;
+  }
+  .thumb-logo {
+    width: 64px; height: 36px; object-fit: contain;
+    border-radius: 4px; background: #1a1d26;
+    border: 1px solid var(--border); flex-shrink: 0;
+  }
+  .dl-link {
+    font-size: 11px; color: var(--accent);
+    text-decoration: none; opacity: 0.7;
+    white-space: nowrap;
+  }
+  .dl-link:hover { opacity: 1; }
+
+  .active-filters {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;
+  }
+  .active-tag {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 20px;
+    background: rgba(200,169,110,0.12); border: 1px solid rgba(200,169,110,0.3);
+    font-size: 11px; color: var(--accent);
+  }
+  .active-tag button {
+    background: none; border: none; color: var(--accent);
+    cursor: pointer; font-size: 13px; line-height: 1; padding: 0 0 0 2px;
+  }
+`;
+
+// ── Tab configs ───────────────────────────────────────────────
+const TABS = [
+  {
+    id: "attendees", label: "Attendees", table: "attendees",
+    cols: ["first_name","last_name","email","organization","title","lic","address_state","event_name","event_date"],
+    filters: ["search","event_name","market","address_state","year"],
+  },
+  {
+    id: "sponsors", label: "Sponsors", table: "sponsors",
+    cols: ["logo","name","tiers","website","event_name","event_date"],
+    filters: ["search","event_name","market","year"],
+  },
+  {
+    id: "speakers", label: "Speakers", table: "speakers",
+    cols: ["picture","first_name","last_name","email","organization","title","event_name","event_date"],
+    filters: ["search","event_name","market","year"],
+  },
+  {
+    id: "events", label: "Events", table: "events",
+    cols: ["event_name","date","end_date","location","total_registration_count"],
+    filters: ["search","market","year"],
+  },
+  {
+    id: "sessions", label: "Sessions", table: "sessions",
+    cols: ["title","sub_title","session_date","start_time","end_time","event_name"],
+    filters: ["search","event_name","market","year"],
+  },
+];
+
+const PAGE_SIZE = 100;
+function colLabel(col) {
+  return col.replace(/_/g," ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function dateColFor(tabId) {
+  if (tabId === "events") return "date";
+  if (tabId === "sessions") return "session_date";
+  return "event_date";
+}
+
+function applyFiltersToUrl(url, { tabId, search, eventName, stateFilter, selectedYears, market }) {
+  const dateCol = dateColFor(tabId);
+
+  // Always exclude test/cancelled events
+  const testFilter = TEST_WORDS.map(w => `event_name.not.ilike.*${w}*`).join(",");
+  // We apply this via and= later merged with year filter if needed
+
+  // Event name keyword
+  if (eventName.trim()) {
+    url.searchParams.set("event_name", `ilike.*${eventName.trim()}*`);
+  }
+
+  // Market filter — OR across all terms for that market
+  if (market) {
+    const mkt = MARKETS.find(m => m.label === market);
+    if (mkt) {
+      const orParts = mkt.terms.map(t => `event_name.ilike.*${t}*`).join(",");
+      // Will be merged into or= below if no name search, else appended
+      url.searchParams.set("or", `(${orParts})`);
+    }
+  }
+
+  // State (separate column filter)
+  if (stateFilter.trim() && tabId === "attendees") {
+    url.searchParams.set("address_state", `ilike.*${stateFilter.trim()}*`);
+  }
+
+  // Year(s) — use and= for single, or= for multiple
+  // Important: or= and name search or= cannot coexist as separate params.
+  // Solution: when we have BOTH a name search (or=) AND multiple years (or=),
+  // wrap years in and= with nested or, and keep name search as a separate or=.
+  const hasYears = selectedYears.size > 0;
+  const sorted = hasYears ? [...selectedYears].sort() : [];
+
+  // Name/person search
+  if (search.trim()) {
+    const s = search.trim();
+    if (tabId === "attendees" || tabId === "speakers") {
+      // Use or= for name search
+      url.searchParams.set("or", `(first_name.ilike.*${s}*,last_name.ilike.*${s}*,email.ilike.*${s}*,organization.ilike.*${s}*)`);
+      // Year filter goes into and= so it doesn't conflict
+      if (hasYears) {
+        if (sorted.length === 1) {
+          const y = sorted[0];
+          url.searchParams.set("and", `(${dateCol}.gte.${y}-01-01,${dateCol}.lte.${y}-12-31)`);
+        } else {
+          const parts = sorted.map(y => `and(${dateCol}.gte.${y}-01-01,${dateCol}.lte.${y}-12-31)`);
+          url.searchParams.set("and", `(or(${parts.join(",")}))`);
+        }
+      }
+    } else if (tabId === "sponsors") {
+      url.searchParams.set("name", `ilike.*${s}*`);
+      if (hasYears) {
+        const parts = sorted.map(y => `and(${dateCol}.gte.${y}-01-01,${dateCol}.lte.${y}-12-31)`);
+        url.searchParams.set(sorted.length === 1 ? "and" : "or", sorted.length === 1
+          ? `(${dateCol}.gte.${sorted[0]}-01-01,${dateCol}.lte.${sorted[0]}-12-31)`
+          : `(${parts.join(",")})`
+        );
+      }
+    } else {
+      url.searchParams.set("event_name", `ilike.*${s}*`);
+      if (hasYears) {
+        const parts = sorted.map(y => `and(${dateCol}.gte.${y}-01-01,${dateCol}.lte.${y}-12-31)`);
+        sorted.length === 1
+          ? url.searchParams.set("and", `(${dateCol}.gte.${sorted[0]}-01-01,${dateCol}.lte.${sorted[0]}-12-31)`)
+          : url.searchParams.set("or", `(${parts.join(",")})`);
+      }
+    }
+  } else if (hasYears) {
+    // No name search — year filter can use or= freely
+    if (sorted.length === 1) {
+      const y = sorted[0];
+      url.searchParams.set("and", `(${dateCol}.gte.${y}-01-01,${dateCol}.lte.${y}-12-31)`);
+    } else {
+      const parts = sorted.map(y => `and(${dateCol}.gte.${y}-01-01,${dateCol}.lte.${y}-12-31)`);
+      url.searchParams.set("or", `(${parts.join(",")})`);
+    }
+  }
+}
+
+// ── Main App ──────────────────────────────────────────────────
+export default function App() {
+  const [activeTab, setActiveTab]     = useState("attendees");
+  const [rows, setRows]               = useState([]);
+  const [total, setTotal]             = useState(0);
+  const [loading, setLoading]         = useState(false);
+  const [page, setPage]               = useState(0);
+  const [search, setSearch]           = useState("");
+  const [eventName, setEventName]     = useState("");
+  const [stateFilter, setStateFilter] = useState("");
+  const [selectedYears, setSelectedYears] = useState(new Set());
+  const [market, setMarket] = useState("");
+
+  const tab = TABS.find(t => t.id === activeTab);
+
+  const toggleYear = (y) => {
+    setSelectedYears(prev => {
+      const next = new Set(prev);
+      next.has(y) ? next.delete(y) : next.add(y);
+      return next;
+    });
+  };
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const url = new URL(`${SUPABASE_URL}/rest/v1/${tab.table}`);
+      url.searchParams.set("select", "*");
+      url.searchParams.set("limit", String(PAGE_SIZE));
+      url.searchParams.set("offset", String(page * PAGE_SIZE));
+      url.searchParams.set("order", `${dateColFor(tab.id)}.desc`);
+      applyFiltersToUrl(url, { tabId: tab.id, search, eventName, stateFilter, selectedYears, market });
+
+      const res = await fetch(url.toString(), {
+        headers: { ...headers, Prefer: "count=exact" },
+      });
+      const count = parseInt(res.headers.get("content-range")?.split("/")[1] || "0");
+      const data  = await res.json();
+      const cleaned = Array.isArray(data) ? data.filter(row => {
+        const name = (row.event_name || row.name || "").toLowerCase();
+        return !TEST_WORDS.some(w => name.includes(w));
+      }) : [];
+      setRows(cleaned);
+      setTotal(count);
+    } catch(e) {
+      console.error(e);
+      setRows([]);
+    }
+    setLoading(false);
+  }, [activeTab, search, eventName, stateFilter, selectedYears, market, page, tab]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { setPage(0); }, [search, eventName, stateFilter, selectedYears, market, activeTab]);
+
+  const switchTab = (id) => {
+    setActiveTab(id); setSearch(""); setEventName("");
+    setStateFilter(""); setSelectedYears(new Set()); setMarket(""); setPage(0);
+  };
+
+  const clearFilters = () => {
+    setSearch(""); setEventName(""); setStateFilter(""); setSelectedYears(new Set()); setMarket("");
+  };
+
+  const fetchExportData = async () => {
+    const url = new URL(`${SUPABASE_URL}/rest/v1/${tab.table}`);
+    url.searchParams.set("select", "*");
+    url.searchParams.set("limit", "10000");
+    url.searchParams.set("order", `${dateColFor(tab.id)}.desc`);
+    applyFiltersToUrl(url, { tabId: tab.id, search, eventName, stateFilter, selectedYears, market });
+    const res = await fetch(url.toString(), { headers });
+    return await res.json();
+  };
+
+  const handleExport = async () => {
+    const data = await fetchExportData();
+    exportCSV(data, `${tab.id}_export_${new Date().toISOString().slice(0,10)}.csv`);
+  };
+
+  const handleExportDedup = async () => {
+    const data = await fetchExportData();
+    const seen = new Map();
+    for (const row of data) {
+      const key = (row.email || "").toLowerCase().trim();
+      if (!key) { continue; }
+      if (!seen.has(key)) seen.set(key, row);
+    }
+    const noEmail = data.filter(r => !(r.email || "").trim());
+    const deduped = [...seen.values(), ...noEmail];
+    exportCSV(deduped, `${tab.id}_unique_${new Date().toISOString().slice(0,10)}.csv`);
+  };
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const hasFilters = search || eventName || stateFilter || selectedYears.size > 0 || market;
+
+  return (
+    <>
+      <style>{css}</style>
+
+      <header className="header">
+        <div className="header-left">
+          <div className="logo-mark">R</div>
+          <div>
+            <div className="header-title">PheedLoop Archive</div>
+            <div className="header-sub">REJournals Event History</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted)" }}>Historical data · Read only</div>
+      </header>
+
+      <nav className="tabs">
+        {TABS.map(t => (
+          <button key={t.id} className={`tab ${activeTab === t.id ? "active" : ""}`} onClick={() => switchTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <main className="main">
+        <div className="filters">
+
+          {tab.filters.includes("search") && (
+            <div className="filter-group">
+              <span className="filter-label">Search</span>
+              <input
+                type="text"
+                placeholder={
+                  tab.id === "attendees" || tab.id === "speakers" ? "Name, email, or company..."
+                  : tab.id === "sponsors" ? "Sponsor name..."
+                  : "Event name..."
+                }
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ minWidth: 240 }}
+              />
+            </div>
+          )}
+
+          {tab.filters.includes("event_name") && (
+            <div className="filter-group">
+              <span className="filter-label">Event Name</span>
+              <input
+                type="text"
+                placeholder='e.g. "MN Office" or "Chicago"'
+                value={eventName}
+                onChange={e => setEventName(e.target.value)}
+                style={{ minWidth: 200 }}
+              />
+            </div>
+          )}
+
+          {tab.filters.includes("market") && (
+            <div className="filter-group">
+              <span className="filter-label">Market</span>
+              <select value={market} onChange={e => setMarket(e.target.value)} style={{ minWidth: 200 }}>
+                <option value="">All markets</option>
+                {MARKETS.map(m => (
+                  <option key={m.label} value={m.label}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {tab.filters.includes("address_state") && (
+            <div className="filter-group">
+              <span className="filter-label">State</span>
+              <input
+                type="text"
+                placeholder="MN, IL, TX..."
+                value={stateFilter}
+                onChange={e => setStateFilter(e.target.value)}
+                style={{ minWidth: 100 }}
+              />
+            </div>
+          )}
+
+          {tab.filters.includes("year") && (
+            <div className="filter-group">
+              <span className="filter-label">
+                Years {selectedYears.size > 0 && <span style={{color:"var(--accent)"}}>({selectedYears.size} selected)</span>}
+              </span>
+              <div className="year-checks">
+                {YEARS.map(y => (
+                  <label key={y} className={`year-check ${selectedYears.has(y) ? "checked" : ""}`}>
+                    <input type="checkbox" checked={selectedYears.has(y)} onChange={() => toggleYear(y)} />
+                    {y}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="filter-group" style={{ justifyContent: "flex-end", marginTop: "auto" }}>
+            <span className="filter-label">&nbsp;</span>
+            <div style={{ display: "flex", gap: 8, paddingTop: 2 }}>
+              {hasFilters && (
+                <button className="btn btn-ghost btn-sm" onClick={clearFilters}>Clear</button>
+              )}
+              <button className="btn btn-primary btn-sm" onClick={handleExport}>Export CSV</button>
+              {tab.id === "attendees" && (
+                <button className="btn btn-ghost btn-sm" onClick={handleExportDedup} style={{borderColor:"var(--accent)",color:"var(--accent)"}}>
+                  Export Unique
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="stats-bar">
+          <div className="stats-count">
+            Showing <span>{rows.length.toLocaleString()}</span> of <span>{total.toLocaleString()}</span> {tab.label.toLowerCase()}
+            {selectedYears.size > 0 && (
+              <span style={{marginLeft: 8, color: "var(--muted)"}}>
+                · {[...selectedYears].sort().join(", ")}
+              </span>
+            )}
+          </div>
+          {totalPages > 1 && <div className="page-info">Page {page + 1} of {totalPages}</div>}
+        </div>
+
+        <div className="table-wrap">
+          {loading ? (
+            <div className="state-box"><div className="icon">⟳</div><p>Loading...</p></div>
+          ) : rows.length === 0 ? (
+            <div className="state-box"><div className="icon">∅</div><p>No results found. Try adjusting your filters.</p></div>
+          ) : (
+            <table>
+              <thead>
+                <tr>{tab.cols.map(col => <th key={col}>{colLabel(col)}</th>)}</tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={i}>
+                    {tab.cols.map(col => (
+                      <td key={col} title={col !== "logo" && col !== "picture" ? String(row[col] ?? "") : ""}>
+                        {col === "tiers" && row[col] ? (
+                          <span className="pill">{row[col]}</span>
+                        ) : col === "logo" && row[col] ? (
+                          <div className="thumb-cell">
+                            <img
+                              src={row[col]}
+                              alt=""
+                              className="thumb-logo"
+                              onError={e => { e.target.style.display="none"; }}
+                            />
+                            <a
+                              href={row[col]}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="dl-link"
+                              download
+                            >↓ logo</a>
+                          </div>
+                        ) : col === "picture" && row[col] ? (
+                          <div className="thumb-cell">
+                            <img
+                              src={row[col]}
+                              alt=""
+                              className="thumb"
+                              onError={e => { e.target.style.display="none"; }}
+                            />
+                            <a
+                              href={row[col]}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="dl-link"
+                              download
+                            >↓ photo</a>
+                          </div>
+                        ) : col === "website" && row[col] ? (
+                          <a href={row[col]} target="_blank" rel="noreferrer" className="dl-link" style={{opacity:1}}>
+                            {row[col].replace(/^https?:\/\//, "").slice(0, 30)}
+                          </a>
+                        ) : (
+                          row[col] ?? "—"
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {totalPages > 1 && (
+          <div className="pagination">
+            <button className="btn btn-ghost btn-sm" onClick={() => setPage(p => Math.max(0, p-1))} disabled={page === 0}>← Prev</button>
+            <span className="page-info">{page + 1} / {totalPages}</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPage(p => Math.min(totalPages-1, p+1))} disabled={page >= totalPages-1}>Next →</button>
+          </div>
+        )}
+      </main>
+    </>
+  );
+}

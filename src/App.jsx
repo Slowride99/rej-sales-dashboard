@@ -25,11 +25,11 @@ export default function App() {
       <ul>
         {rows.map((r) => (
           <li key={r.key}>
-            <strong>{r.display_name}</strong>
+            <strong>{r.display_name}</strong> — {r.score} — {r.reason}
             {' — '}
             {r.attendee_count} attendees, {r.events_attended} events,
             {' '}sponsored {r.times_sponsored}×
-            <strong>{r.display_name}</strong> — {r.score} — {r.reason}
+            
           </li>
         ))}
       </ul>

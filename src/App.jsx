@@ -29,6 +29,7 @@ export default function App() {
             {' — '}
             {r.attendee_count} attendees, {r.events_attended} events,
             {' '}sponsored {r.times_sponsored}×
+            <strong>{r.display_name}</strong> — {r.score} — {r.reason}
           </li>
         ))}
       </ul>

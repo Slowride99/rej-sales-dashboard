@@ -6,14 +6,9 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  const market = req.query.market || 'TX';
-  const year = Number(req.query.year) || 2026;
-  const limit = Number(req.query.limit) || 50;
-
-  const { data, error } = await supabase.rpc('sponsor_prospects', {
-    p_market: market,
-    p_year: year,
-    p_limit: limit,
+  const { data, error } = await supabase.rpc('speaker_prospects', {
+    p_market: req.query.market || 'TX',
+    p_limit: Number(req.query.limit) || 50,
   });
 
   if (error) return res.status(500).json({ error: error.message });

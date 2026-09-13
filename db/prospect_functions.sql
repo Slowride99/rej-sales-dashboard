@@ -59,9 +59,10 @@ as $$
         case when s.times_sponsored > 0 and s.last_sponsored_year < p_year
              then greatest(0, 45 - (p_year - s.last_sponsored_year) * 10)
              else 0 end
-        + least(20, s.attendee_count * 3)
-        + least(12, s.events_attended * 4)
-        + case when s.times_spoken > 0 then 15 else 0 end
+        + least(35, s.attendee_count)                      -- 1 pt each, cap 35
+        + least(25, s.events_attended * 2)                 -- 2 pt each, cap 25
+        + case when s.times_spoken > 0
+                then least(20, 8 + s.times_spoken) else 0 end
         + least(15, s.award_entries * 5)
         + case when s.award_finalists > 0 then 8 else 0 end
         + case when s.last_touch_year >= p_year - 1 then 10
@@ -122,6 +123,7 @@ as $$
     (sc.times_sponsored > 0 and sc.last_sponsored_year < p_year) as is_lapsed
   from scored sc
   where sc.score > 0
+    and (sc.attendee_count >= 3 or sc.times_sponsored >= 2)
   order by sc.score desc, sc.attendee_count desc
   limit p_limit;
 $$;

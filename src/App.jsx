@@ -192,7 +192,7 @@ function Column({ title, count, hint, children, empty, loading }) {
 
 /* ---------------------------------- draft --------------------------------- */
 
-function DraftPanel({ draft, onClose }) {
+function DraftPanel({ draft, onClose, onLogged }) {
   const [copied, setCopied] = useState(false);
   if (!draft) return null;
 

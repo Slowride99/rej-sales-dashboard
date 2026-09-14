@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import DetailPanel from './DetailPanel';
+import NotesColumn from './NotesColumn';
  
 /* ------------------------------------------------------------------ *
  * REJournals — Event Sales
@@ -454,6 +455,9 @@ export default function App() {
                  />
                 ))}
             </Column>
+
+            <NotesColumn event={event} />
+
           </div>
         </>
       )}
@@ -542,7 +546,7 @@ const sx = {
   },
   grid: {
     display: 'grid', gap: 16, alignItems: 'start',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
   },
   col: { background: C.panel, border: `1px solid ${C.edge}`, borderRadius: 8, padding: 16 },
   colHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' },

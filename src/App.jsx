@@ -265,12 +265,17 @@ export default function App() {
 
   const load = useCallback(() => {
     setLoading(true);
+
     const qs = new URLSearchParams({ market: MARKET, year: String(YEAR) });
     if (eventId) qs.set('eventId', eventId);
 
+    const sqs = new URLSearchParams({ market: MARKET });
+    if (eventId) sqs.set('eventId', eventId);
+    if (event?.swoogoId) sqs.set('swoogoId', String(event.swoogoId));
+
     Promise.all([
       fetch(`/api/board?${qs}`).then((r) => r.json()),
-      fetch(`/api/speakers?${qs}`).then((r) => r.json()),
+      fetch(`/api/speakers?${sqs}`).then((r) => r.json()),
     ])
       .then(([b, s]) => {
         if (b.error) throw new Error(b.error);
@@ -280,7 +285,7 @@ export default function App() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [eventId]);
+  }, [eventId, event?.swoogoId]);
 
   useEffect(() => { load(); }, [load]);
 

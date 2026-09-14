@@ -365,10 +365,19 @@ export default function App() {
   return (
     <div style={sx.page}>
       <header style={sx.top}>
-        <div>
-          <h1 style={sx.h1}>Event sales</h1>
-          <p style={sx.sub}>Texas · five years of event history</p>
+        <div style={{ minWidth: 0 }}>
+          <p style={sx.eyebrow}>Event sales · Texas</p>
+          <h1 style={sx.h1}>{event?.name || 'Loading…'}</h1>
+          <p style={sx.sub}>
+            {[
+              event?.date && fmtDate(event.date),
+              event?.location,
+              event?.owner && `sold by ${event.owner}`,
+              event?.prodOwner && `production ${event.prodOwner}`,
+            ].filter(Boolean).join('  ·  ')}
+          </p>
         </div>
+
         <select style={sx.select} value={eventId} onChange={(e) => setEventId(e.target.value)}>
           {events.length === 0 && <option>Loading events…</option>}
           {events.map((e) => (
@@ -378,13 +387,7 @@ export default function App() {
           ))}
         </select>
       </header>
-
-      {event && (
-        <div style={{ ...sx.meta, marginBottom: 16 }}>
-          {[event.location, event.owner && `sold by ${event.owner}`, event.prodOwner && `production ${event.prodOwner}`]
-            .filter(Boolean).join(' · ')}
-        </div>
-      )}
+      
 
       <nav style={sx.tabs}>
         {[['sponsors', 'Sponsors'], ['speakers', 'Speakers']].map(([id, label]) => (
@@ -530,10 +533,17 @@ const sx = {
   },
   top: {
     display: 'flex', justifyContent: 'space-between',
-    alignItems: 'flex-end', gap: 20, flexWrap: 'wrap', marginBottom: 4,
+    alignItems: 'flex-start', gap: 24, flexWrap: 'wrap', marginBottom: 20,
   },
-  h1: { fontSize: 26, fontWeight: 600, margin: 0, letterSpacing: '-0.01em' },
-  sub: { color: C.soft, fontSize: 13, margin: '4px 0 0' },
+  eyebrow: {
+    color: C.tx, fontSize: 12, fontWeight: 600, margin: '0 0 6px',
+    letterSpacing: '0.08em', textTransform: 'uppercase',
+  },
+  h1: {
+    fontSize: 34, fontWeight: 600, margin: 0,
+    letterSpacing: '-0.02em', lineHeight: 1.15,
+  },
+  sub: { color: C.soft, fontSize: 14.5, margin: '8px 0 0' },
   select: {
     background: C.panel, color: C.ink, border: `1px solid ${C.edge}`,
     borderRadius: 6, padding: '9px 12px', fontSize: 14, minWidth: 320, maxWidth: '100%',

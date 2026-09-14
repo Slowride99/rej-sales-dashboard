@@ -19,11 +19,13 @@ const BASE = 'appSq5fIk7AM1KUo9';
 const KEY = process.env.AIRTABLE_TOKEN || process.env.VITE_AIRTABLE_TOKEN;
 
 const T = {
-  notes:    'tbl4gVJnzTiLfUFJy',
-  outreach: 'tbllnZc8FI7lDc98z',
+  notes:     'tbl4gVJnzTiLfUFJy',
+  outreach:  'tbllnZc8FI7lDc98z',
+  companies: 'tblKRzBETMQeK2NXJ',
 };
 
 const F = {
+  companies: { name: 'fldsrDxMTXFUfT7se' },
   notes: {
     note:    'fldr26jOOcPAXXz1d',
     event:   'fldTdXozu5lcXshMj',
@@ -99,15 +101,26 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const eventId = req.query.eventId;
-      const [notes, outreach] = await Promise.all([
+      const [notes, outreach, companies] = await Promise.all([
         getAll(T.notes, Object.values(F.notes)),
         getAll(T.outreach, Object.values(F.outreach)),
+        // Sales has no Airtable access, so the company picker and the names on
+        // logged rows both have to come through this endpoint.
+        getAll(T.companies, [F.companies.name]),
       ]);
+
+      const companyName = Object.fromEntries(
+        companies.map((c) => [c.id, c[F.companies.name] || ''])
+      );
+      const firstName = (ids) => companyName[(ids || [])[0]] || '';
 
       const forEvent = (rows, evField) =>
         eventId ? rows.filter((r) => (r[evField] || []).includes(eventId)) : rows;
 
       return res.status(200).json({
+        companies: companies
+          .map((c) => ({ id: c.id, name: c[F.companies.name] || '' }))
+          .filter((c) => c.name),
         notes: forEvent(notes, F.notes.event)
           .map((n) => ({
             id: n.id,
@@ -116,6 +129,7 @@ export default async function handler(req, res) {
             team: plain(n[F.notes.team]) || '',
             flag: plain(n[F.notes.flag]) || '',
             companyIds: n[F.notes.company] || [],
+            companyName: firstName(n[F.notes.company]),
             created: n[F.notes.created] || null,
           }))
           .sort((a, b) => new Date(b.created) - new Date(a.created)),
@@ -133,6 +147,7 @@ export default async function handler(req, res) {
             followUpBy: o[F.outreach.followUpBy] || null,
             source: plain(o[F.outreach.source]) || '',
             companyIds: o[F.outreach.company] || [],
+            companyName: firstName(o[F.outreach.company]),
           }))
           .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
       });

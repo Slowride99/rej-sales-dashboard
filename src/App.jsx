@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import DetailPanel from './DetailPanel';
 import NotesColumn from './NotesColumn';
  
@@ -196,11 +196,29 @@ function DraftPanel({ draft, onClose }) {
   const [copied, setCopied] = useState(false);
   if (!draft) return null;
 
-  const copy = () => {
+  const copy = async () => {
     navigator.clipboard.writeText(`${draft.subject}\n\n${draft.body}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
+    if (draft.companyId && onLogged) {
+      await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'outreach',
+          eventId: draft.eventId,
+          companyId: draft.companyId,
+          channel: 'Email',
+          subject: draft.subject,
+          notes: draft.body,
+          rep: draft.rep,
+          source: 'Dashboard',
+        }),
+      });
+      onLogged();
+    }
   };
+  
   const mailto = `mailto:?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`;
 
   return (
@@ -248,6 +266,9 @@ export default function App() {
   const [draft, setDraft] = useState(null);
   const [draftingKey, setDraftingKey] = useState(null);
 
+  const notesRef = useRef(null);
+  const [companyList, setCompanyList] = useState([]);
+
   const event = events.find((e) => e.id === eventId) || null;
 
   useEffect(() => {
@@ -262,6 +283,14 @@ export default function App() {
       })
       .catch((e) => setError(e.message));
   }, []);
+
+  useEffect(() => {
+    if (!eventId) return;
+    fetch(`/api/notes?eventId=${eventId}`)
+      .then((r) => r.json())
+      .then((d) => setCompanyList(d.companies || []))
+      .catch(() => {});
+  }, [eventId]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -325,7 +354,13 @@ export default function App() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setDraft({ ...data, company: r.display_name });
+      setDraft({
+        ...data,
+        company: r.display_name,
+        companyId: r.airtableId,
+        eventId: event?.id,
+        rep: event?.owner,
+      });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -464,7 +499,7 @@ export default function App() {
                 ))}
             </Column>
 
-            <NotesColumn event={event} />
+            <NotesColumn ref={notesRef} event={event} companies={companyList} />
 
           </div>
         </>
@@ -509,7 +544,11 @@ export default function App() {
 
       {loading && <p style={sx.hint}>Loading…</p>}
 
-      <DraftPanel draft={draft} onClose={() => setDraft(null)} />
+      <DraftPanel
+        draft={draft}
+        onClose={() => setDraft(null)}
+        onLogged={() => notesRef.current?.reload()}
+      />
 
       <DetailPanel
         subject={detail?.subject}

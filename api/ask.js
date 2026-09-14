@@ -78,7 +78,18 @@ Examples:
       .replace(/```json|```/g, '')
       .trim();
 
-    const parsed = JSON.parse(text);
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) {
+        try { parsed = JSON.parse(m[0]); } catch { parsed = null; }
+      }
+      if (!parsed) {
+        return res.status(200).json({ filter: {}, label: 'Could not read that question' });
+      }
+    }
     const { label, ...filter } = parsed;
 
     return res.status(200).json({ filter, label: label || 'Filtered' });

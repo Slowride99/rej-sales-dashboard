@@ -72,7 +72,7 @@ function MailHistory({ company }) {
         Last contact {when(latest.date).toLowerCase()} · {state.messages.length} message
         {state.messages.length === 1 ? '' : 's'} in {state.user}
       </p>
-      <div style={{ display: 'grid', gap: 8 }}>
+      <div style={{ display: 'grid', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
         {state.messages.slice(0, 6).map((m, i) => (
           <a key={i} href={m.link} target="_blank" rel="noreferrer" style={s.mailRow}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>

@@ -7,3 +7,17 @@ dist
 .env.local
 .env*.local
 .DS_Store
+# email index working data — never commit
+*.pst
+*.mbox
+*.ost
+*.7z.*
+pst-out/
+index-out*/
+match-out*/
+contacts.csv
+messages.csv
+prospects.csv
+companies_db.csv
+aliases_db.csv
+domain_company_map.csv

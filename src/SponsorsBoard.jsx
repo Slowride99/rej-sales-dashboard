@@ -1,6 +1,6 @@
 // SponsorsBoard.jsx — the Sponsors screen.
 //
-// Reads /api/board-series (picker + one series' board), /api/notes (Jeff types
+// Reads /api/board-series (picker + one series' board), /api/board-notes (Jeff types
 // here, it persists), /api/salesintel (enrichment on demand).
 //
 // Field names below are taken verbatim from the live /api/board-series
@@ -55,8 +55,8 @@ async function getJSON(url, init) {
 
 /* ------------------------------------------------------------ notes hook */
 //
-//   GET  /api/notes?series=<name>       -> { notes: { [key]: {body, updated_at} } }
-//   POST /api/notes {series,key,body}   -> { ok:true, updated_at }
+//   GET  /api/board-notes?series=<name>       -> { notes: { [key]: {body, updated_at} } }
+//   POST /api/board-notes {series,key,body}  -> { ok:true, updated_at }
 
 function useNotes(series) {
   const [notes, setNotes] = useState({});
@@ -66,7 +66,7 @@ function useNotes(series) {
   useEffect(() => {
     if (!series) return;
     let alive = true;
-    getJSON(`/api/notes?series=${encodeURIComponent(series)}`)
+    getJSON(`/api/board-notes?series=${encodeURIComponent(series)}`)
       .then((d) => { if (alive) setNotes(d.notes || {}); })
       .catch(() => { if (alive) setNotes({}); });
     return () => { alive = false; };
@@ -75,7 +75,7 @@ function useNotes(series) {
   const flush = useCallback(async (key, body) => {
     setSaving((s) => ({ ...s, [key]: 'saving' }));
     try {
-      const d = await getJSON('/api/notes', {
+      const d = await getJSON('/api/board-notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ series, key, body }),

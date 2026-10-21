@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import DetailPanel from './DetailPanel';
 import NotesColumn from './NotesColumn';
+import SponsorsBoard from './SponsorsBoard';
  
 /* ------------------------------------------------------------------ *
  * REJournals — Event Sales
@@ -425,7 +426,7 @@ export default function App() {
       
 
       <nav style={sx.tabs}>
-        {[['sponsors', 'Sponsors'], ['speakers', 'Speakers']].map(([id, label]) => (
+        {[['sponsors', 'Sponsors'], ['board', 'Sponsor gap'], ['speakers', 'Speakers']].map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -504,6 +505,8 @@ export default function App() {
           </div>
         </>
       )}
+
+      {tab === 'board' && <SponsorsBoard />}
 
       {tab === 'speakers' && (
         <div style={sx.grid}>

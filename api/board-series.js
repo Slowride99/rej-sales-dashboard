@@ -56,21 +56,45 @@ export default async function handler(req, res) {
     // the three groups the screen shows
     const sponsored = rows.filter(r => r.years_sponsored > 0);
 
+    // NOT using the mv's buys_elsewhere_never_here flag here, deliberately.
+    //
+    // That flag is `years_sponsored = 0 AND sponsorships_total > 0 AND emails > 0`,
+    // which welds together two unrelated questions: did they buy elsewhere and
+    // never here (a PheedLoop fact), and have we emailed them (a fact from
+    // Jeff's archive). A company whose domain the email index never matched can
+    // therefore never be flagged, however much it has bought — which quietly
+    // dropped CoStar (9 sponsorships across 5 markets) and Cushman & Wakefield
+    // (6 across 4) out of the list entirely.
+    //
+    // With most companies in a series still unmatched, that exclusion is large
+    // and invisible. So the group is the business fact alone, and the email
+    // claim in the headline is scoped to the subset we can actually stand
+    // behind. Leave the flag in the view — it is still what the index on
+    // mv_event_board covers.
+    const isGap = r => r.years_sponsored === 0 && (r.sponsorships_total || 0) > 0;
+
     const gap = rows
-      .filter(r => r.buys_elsewhere_never_here)
+      .filter(isGap)
       .sort((a, b) => (b.sponsorships_total - a.sponsorships_total)
                    || ((b.emails || 0) - (a.emails || 0)));
 
     const engaged = rows
-      .filter(r => !r.years_sponsored && !r.buys_elsewhere_never_here
+      .filter(r => !r.years_sponsored && !isGap(r)
                    && (r.years_attended >= 2 || r.spoke > 0))
       .sort((a, b) => (b.emails || 0) - (a.emails || 0));
 
-    // the line worth leading with
+    // the line worth leading with.
+    //
+    // emailed_companies is the count the email figure actually covers. Saying
+    // "24 companies, 639 emails" would imply we emailed all 24; we emailed 20
+    // of them and don't know about the rest.
+    const emailedGap = gap.filter(r => (r.emails || 0) > 0);
+
     const headline = gap.length ? {
       companies: gap.length,
       sponsorships_elsewhere: gap.reduce((n, r) => n + (r.sponsorships_total || 0), 0),
-      emails_sent: gap.reduce((n, r) => n + (r.emails || 0), 0),
+      emailed_companies: emailedGap.length,
+      emails_sent: emailedGap.reduce((n, r) => n + (r.emails || 0), 0),
       names: gap.slice(0, 5).map(r => r.company),
     } : null;
 

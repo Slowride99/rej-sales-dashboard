@@ -446,8 +446,14 @@ export default function SponsorsBoard() {
               <p className="headline-lede">
                 <b>{board.headline.companies} companies</b> have bought{' '}
                 <b>{num(board.headline.sponsorships_elsewhere)} sponsorships</b> from us
-                in other markets and have <b>never sponsored this event</b>. We've sent
-                them <b>{num(board.headline.emails_sent)} emails</b>.
+                in other markets and have <b>never sponsored this event</b>.
+                {board.headline.emailed_companies > 0 && (
+                  <>
+                    {' '}We've emailed{' '}
+                    <b>{board.headline.emailed_companies} of them</b>,{' '}
+                    <b>{num(board.headline.emails_sent)} times</b>.
+                  </>
+                )}
               </p>
               <p className="headline-names">
                 {board.headline.names.map(cleanName).join(' · ')}

@@ -74,12 +74,31 @@ export default async function handler(req, res) {
       names: gap.slice(0, 5).map(r => r.company),
     } : null;
 
+    // Outreach totals over EVERY company in the series, not just the three
+    // groups above — those cover about half the rows, so summing them on the
+    // client understated the email volume by roughly the same margin.
+    //
+    // emails === null means the email index couldn't match the company's
+    // domain. That is "not known", so it is counted as unmatched and kept out
+    // of every other figure rather than treated as a zero.
+    const totals = rows.reduce((t, r) => {
+      const e = r.emails == null ? null : Number(r.emails);
+      if (e == null) { t.unmatched++; return t; }
+      if (e > 0) { t.emails += e; t.companies_emailed++; }
+      if (r.ever_replied === true) t.replied++;
+      if (r.last_emailed && (!t.last_emailed || r.last_emailed > t.last_emailed)) {
+        t.last_emailed = r.last_emailed;
+      }
+      return t;
+    }, { emails: 0, companies_emailed: 0, replied: 0, unmatched: 0, last_emailed: null });
+
     const years = [...new Set(rows.flatMap(r => r.sponsor_years || []))].sort();
 
     res.json({
       series,
       years,
       headline,
+      totals,
       counts: {
         companies: rows.length,
         sponsored: sponsored.length,

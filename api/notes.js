@@ -1,103 +1,204 @@
-// api/notes.js — the part Todd is actually grading.
+/* eslint-env node */
+// api/notes.js
+// Shared event notes + the sales outreach log.
 //
-//   GET  /api/notes?series=<name>          -> { notes: { <key>: {body, updated_at} } }
-//   POST /api/notes  {series,key,body}     -> { ok:true, updated_at }
+//   GET  /api/notes?eventId=recXXXX      -> { notes, outreach }
+//   POST /api/notes  { kind: 'note',     eventId, companyId?, body, author, team, flag }
+//   POST /api/notes  { kind: 'outreach', eventId, companyId?, subject, notes, channel,
+//                      rep, outcome, nextStep, followUpBy }
 //
-// A note is keyed by (series, company key), so it follows the company on the
-// board for that event and survives a materialised-view refresh — notes live in
-// their own table, nothing in the pipeline touches them.
+// Two tables, deliberately separate:
+//   Event Notes    — shared. Sales and production both read and write it.
+//   Sales Outreach — sales only. Answers "when did I last contact this company".
+// Production's own Communications table is untouched; that is materials
+// chasing and does not belong in either of these.
 //
-// An empty body deletes the note rather than storing a blank row, so Jeff
-// clearing a field leaves no residue.
-//
-// Env (server-side only — no VITE_ prefix, these must never reach the browser):
-//   SUPABASE_URL
-//   SUPABASE_SERVICE_ROLE_KEY
+// Env: AIRTABLE_TOKEN (falls back to VITE_AIRTABLE_TOKEN)
 
-const SB = process.env.SUPABASE_URL;
-const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const BASE = 'appSq5fIk7AM1KUo9';
+const KEY = process.env.AIRTABLE_TOKEN || process.env.VITE_AIRTABLE_TOKEN;
 
-async function sb(path, init = {}) {
-  const r = await fetch(`${SB}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: SB_KEY,
-      Authorization: `Bearer ${SB_KEY}`,
-      'Content-Type': 'application/json',
-      ...(init.headers || {}),
-    },
-  });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`supabase ${r.status}: ${text.slice(0, 300)}`);
-  return text ? JSON.parse(text) : null;
+const T = {
+  notes:     'tbl4gVJnzTiLfUFJy',
+  outreach:  'tbllnZc8FI7lDc98z',
+  companies: 'tblKRzBETMQeK2NXJ',
+};
+
+const F = {
+  companies: { name: 'fldsrDxMTXFUfT7se' },
+  notes: {
+    note:    'fldr26jOOcPAXXz1d',
+    event:   'fldTdXozu5lcXshMj',
+    company: 'fld9db94IU5oz9G2y',
+    body:    'fld2YmomeomOmrEq8',
+    author:  'fldvtUGA26i9DNZou',
+    team:    'fldqkXGMzS80rKpxO',
+    flag:    'fld5eD3Wyl8goe9Gr',
+    created: 'fldXvfOIU69zW43ZA',
+  },
+  outreach: {
+    title:      'fldClsTeQHpQLbyRG',
+    company:    'flduVhK3M4o8ds4YV',
+    event:      'fldajkHQ8EA89N49r',
+    date:       'fldzkkPettsaWVxiB',
+    channel:    'fldoXdJs7kVK9JIZn',
+    rep:        'fld0ZHIJkCbCMmUMJ',
+    subject:    'fld9KS6yYKDVlZkNj',
+    notes:      'fldPNiZe3tlip8idr',
+    outcome:    'fld5lMmAZLc5zrhUJ',
+    nextStep:   'fldeTXmxdcwyDVn9O',
+    followUpBy: 'fldgNRqUOw4qUyyKL',
+    source:     'fldvMU7jWMlvKnrlT',
+  },
+};
+
+const plain = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v.name : v);
+
+async function getAll(tableId, fieldIds) {
+  const out = [];
+  let offset = '';
+  do {
+    const qs = new URLSearchParams();
+    qs.set('pageSize', '100');
+    qs.set('returnFieldsByFieldId', 'true');
+    fieldIds.forEach((f) => qs.append('fields[]', f));
+    if (offset) qs.set('offset', offset);
+
+    const r = await fetch(`https://api.airtable.com/v0/${BASE}/${tableId}?${qs}`, {
+      headers: { Authorization: `Bearer ${KEY}` },
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error?.message || `Airtable ${r.status}`);
+    (data.records || []).forEach((rec) => out.push({ id: rec.id, ...rec.fields }));
+    offset = data.offset || '';
+  } while (offset);
+  return out;
 }
 
-async function readBody(req) {
-  if (req.body && typeof req.body === 'object') return req.body;   // Vercel pre-parses
-  if (typeof req.body === 'string') return JSON.parse(req.body);
-  const chunks = [];
-  for await (const c of req) chunks.push(c);
-  return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+async function create(tableId, fields) {
+  const r = await fetch(
+    `https://api.airtable.com/v0/${BASE}/${tableId}?returnFieldsByFieldId=true`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields, typecast: true }),
+    }
+  );
+  const data = await r.json();
+  if (!r.ok) throw new Error(data?.error?.message || `Airtable ${r.status}`);
+  return { id: data.id, ...data.fields };
+}
+
+// Local midnight, not UTC — an Airtable date-only string parsed as UTC is the
+// previous day in Central.
+function todayCentral() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
 }
 
 export default async function handler(req, res) {
-  if (!SB || !SB_KEY) {
-    return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set' });
-  }
+  if (!KEY) return res.status(500).json({ error: 'AIRTABLE_TOKEN not set' });
 
   try {
-    /* ------------------------------------------------------------ read ---- */
     if (req.method === 'GET') {
-      const series = (req.query.series || '').trim();
-      if (!series) return res.status(400).json({ error: 'series required' });
+      const eventId = req.query.eventId;
+      const [notes, outreach, companies] = await Promise.all([
+        getAll(T.notes, Object.values(F.notes)),
+        getAll(T.outreach, Object.values(F.outreach)),
+        // Sales has no Airtable access, so the company picker and the names on
+        // logged rows both have to come through this endpoint.
+        getAll(T.companies, [F.companies.name]),
+      ]);
 
-      const rows = await sb(
-        `event_notes?series=eq.${encodeURIComponent(series)}` +
-        '&select=company_key,body,updated_at&limit=2000'
+      const companyName = Object.fromEntries(
+        companies.map((c) => [c.id, c[F.companies.name] || ''])
       );
+      const firstName = (ids) => companyName[(ids || [])[0]] || '';
 
-      const notes = {};
-      for (const r of rows) notes[r.company_key] = { body: r.body, updated_at: r.updated_at };
-      return res.json({ notes });
+      const forEvent = (rows, evField) =>
+        eventId ? rows.filter((r) => (r[evField] || []).includes(eventId)) : rows;
+
+      return res.status(200).json({
+        companies: companies
+          .map((c) => ({ id: c.id, name: c[F.companies.name] || '' }))
+          .filter((c) => c.name),
+        notes: forEvent(notes, F.notes.event)
+          .map((n) => ({
+            id: n.id,
+            body: n[F.notes.body] || '',
+            author: plain(n[F.notes.author]) || '',
+            team: plain(n[F.notes.team]) || '',
+            flag: plain(n[F.notes.flag]) || '',
+            companyIds: n[F.notes.company] || [],
+            companyName: firstName(n[F.notes.company]),
+            created: n[F.notes.created] || null,
+          }))
+          .sort((a, b) => new Date(b.created) - new Date(a.created)),
+
+        outreach: forEvent(outreach, F.outreach.event)
+          .map((o) => ({
+            id: o.id,
+            date: o[F.outreach.date] || null,
+            channel: plain(o[F.outreach.channel]) || '',
+            rep: plain(o[F.outreach.rep]) || '',
+            subject: o[F.outreach.subject] || '',
+            notes: o[F.outreach.notes] || '',
+            outcome: plain(o[F.outreach.outcome]) || '',
+            nextStep: o[F.outreach.nextStep] || '',
+            followUpBy: o[F.outreach.followUpBy] || null,
+            source: plain(o[F.outreach.source]) || '',
+            companyIds: o[F.outreach.company] || [],
+            companyName: firstName(o[F.outreach.company]),
+          }))
+          .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)),
+      });
     }
 
-    /* ----------------------------------------------------------- write ---- */
     if (req.method === 'POST') {
-      const { series, key, body } = await readBody(req);
-      if (!series || !key) return res.status(400).json({ error: 'series and key required' });
+      const b = req.body || {};
 
-      const text = typeof body === 'string' ? body.trim() : '';
+      // Linked records are a plain string array. [{id}] is the MCP shape and
+      // fails silently here — 200 OK with nothing written.
+      const link = (id) => (id ? [id] : undefined);
 
-      // cleared field -> remove the row
-      if (!text) {
-        await sb(
-          `event_notes?series=eq.${encodeURIComponent(series)}` +
-          `&company_key=eq.${encodeURIComponent(key)}`,
-          { method: 'DELETE' }
-        );
-        return res.json({ ok: true, updated_at: null, deleted: true });
+      if (b.kind === 'note') {
+        if (!b.eventId || !b.body) {
+          return res.status(400).json({ error: 'eventId and body are required' });
+        }
+        const rec = await create(T.notes, {
+          [F.notes.event]: link(b.eventId),
+          [F.notes.company]: link(b.companyId),
+          [F.notes.body]: b.body,
+          [F.notes.author]: b.author || undefined,
+          [F.notes.team]: b.team || 'Sales',
+          [F.notes.flag]: b.flag || 'FYI',
+        });
+        return res.status(200).json(rec);
       }
 
-      const now = new Date().toISOString();
-      const saved = await sb('event_notes?on_conflict=series,company_key', {
-        method: 'POST',
-        headers: {
-          Prefer: 'resolution=merge-duplicates,return=representation',
-        },
-        body: JSON.stringify([{
-          series,
-          company_key: key,
-          body: text.slice(0, 4000),
-          updated_at: now,
-        }]),
-      });
+      if (b.kind === 'outreach') {
+        if (!b.companyId) return res.status(400).json({ error: 'companyId is required' });
+        const rec = await create(T.outreach, {
+          [F.outreach.company]: link(b.companyId),
+          [F.outreach.event]: link(b.eventId),
+          [F.outreach.date]: b.date || todayCentral(),
+          [F.outreach.channel]: b.channel || 'Email',
+          [F.outreach.rep]: b.rep || undefined,
+          [F.outreach.subject]: b.subject || '',
+          [F.outreach.notes]: b.notes || '',
+          [F.outreach.outcome]: b.outcome || undefined,
+          [F.outreach.nextStep]: b.nextStep || '',
+          [F.outreach.followUpBy]: b.followUpBy || undefined,
+          [F.outreach.source]: b.source || 'Dashboard',
+        });
+        return res.status(200).json(rec);
+      }
 
-      return res.json({ ok: true, updated_at: saved?.[0]?.updated_at || now });
+      return res.status(400).json({ error: "kind must be 'note' or 'outreach'" });
     }
 
-    res.setHeader('Allow', 'GET, POST');
-    return res.status(405).json({ error: 'GET or POST' });
-  } catch (e) {
-    return res.status(500).json({ error: String(e.message || e) });
+    return res.status(405).json({ error: 'GET or POST only' });
+  } catch (err) {
+    console.error('notes error:', err);
+    return res.status(500).json({ error: err.message || 'Request failed' });
   }
 }

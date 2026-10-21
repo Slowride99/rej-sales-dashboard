@@ -1,11 +1,14 @@
 // api/board-series.js — the Sponsors screen's data, in one call.
 //
-//   GET /api/board-series?series=REDnews%20DFW%20Industrial%20Real%20Estate%20Summit
-//   GET /api/board-series                      -> list the available series
+//   GET /api/board-series                      -> the series picker
+//   GET /api/board-series?series=<name>        -> one series' board
 //
-// Reads v_event_board. Nothing is computed here; the view is the contract,
-// so the same numbers come back whether they're read from the app, the SQL
-// editor, or a script.
+// Reads mv_event_board / mv_event_series_summary. Both are materialised,
+// so this is an indexed lookup rather than a recompute. After reloading
+// company_domains or editing event_series:
+//
+//   refresh materialized view concurrently public.mv_event_board;
+//   refresh materialized view concurrently public.mv_event_series_summary;
 //
 // Env (server-side only):
 //   SUPABASE_URL
@@ -23,44 +26,47 @@ async function sb(path) {
 }
 
 export default async function handler(req, res) {
+  if (!SB || !SB_KEY) {
+    return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set' });
+  }
+
   try {
     const series = (req.query.series || '').trim();
 
-    // no series named -> what's available, best first
+    // ---- no series named: the picker, straight off the summary ----
     if (!series) {
       const rows = await sb(
-        'v_event_board?select=series,years_sponsored,emails&limit=20000'
+        'mv_event_series_summary?select=*&order=gap.desc,sponsors.desc&limit=100'
       );
-      const byS = new Map();
-      for (const r of rows) {
-        const s = byS.get(r.series) || { series: r.series, companies: 0, sponsors: 0, emailed: 0 };
-        s.companies += 1;
-        if (r.years_sponsored > 0) s.sponsors += 1;
-        if (r.emails > 0) s.emailed += 1;
-        byS.set(r.series, s);
-      }
-      return res.json({
-        series: [...byS.values()].sort((a, b) => b.sponsors - a.sponsors),
-      });
+      return res.json({ count: rows.length, series: rows });
     }
 
+    // ---- one series ----
     const rows = await sb(
-      `v_event_board?series=eq.${encodeURIComponent(series)}` +
+      `mv_event_board?series=eq.${encodeURIComponent(series)}` +
       '&select=*&order=emails.desc.nullslast&limit=500'
     );
 
-    // The three groups the screen shows, from one pass.
+    if (!rows.length) {
+      return res.status(404).json({
+        error: `no rows for series "${series}" — check the name against /api/board-series`,
+      });
+    }
+
+    // the three groups the screen shows
     const sponsored = rows.filter(r => r.years_sponsored > 0);
+
     const gap = rows
       .filter(r => r.buys_elsewhere_never_here)
       .sort((a, b) => (b.sponsorships_total - a.sponsorships_total)
-                   || (b.emails - a.emails));
+                   || ((b.emails || 0) - (a.emails || 0)));
+
     const engaged = rows
       .filter(r => !r.years_sponsored && !r.buys_elsewhere_never_here
                    && (r.years_attended >= 2 || r.spoke > 0))
       .sort((a, b) => (b.emails || 0) - (a.emails || 0));
 
-    // The line worth leading with.
+    // the line worth leading with
     const headline = gap.length ? {
       companies: gap.length,
       sponsorships_elsewhere: gap.reduce((n, r) => n + (r.sponsorships_total || 0), 0),
@@ -68,9 +74,7 @@ export default async function handler(req, res) {
       names: gap.slice(0, 5).map(r => r.company),
     } : null;
 
-    const years = [...new Set(
-      rows.flatMap(r => r.sponsor_years || [])
-    )].sort();
+    const years = [...new Set(rows.flatMap(r => r.sponsor_years || []))].sort();
 
     res.json({
       series,

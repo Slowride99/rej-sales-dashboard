@@ -120,14 +120,37 @@ export default async function handler(req, res) {
       }
     }
 
+    // REPLACEMENT for the `if (req.query.discover)` block in api/salesintel.js.
+    // Everything else in that file stays as it is.
+    //
+    // Adds:
+    //   ?city=Dallas        -> company_location_cities
+    //   ?employees_min=50   -> company_size_from
+    //   echoes back `searched`, so the UI can show what the query actually became
+    //   instead of the user guessing why they got what they got.
+    //
+    // VERIFY ONE THING: `company_location_cities` is my best read of SalesIntel's
+    // city parameter but I could not confirm it against their docs. If city has no
+    // effect on results, check the parameter name in the SalesIntel API reference
+    // and change the right-hand side below — the rest works regardless. The
+    // `searched` echo is there so a silently-ignored city is visible rather than
+    // looking like "there are no brokers in Dallas".
+
     // ---------------- discovery: companies we have no record of ----------------
     if (req.query.discover) {
       const limit = Math.min(Number(req.query.limit) || 8, MAX_PAGE);
+
+      // page_size over-fetches because the filter below drops anything already
+      // in company_domains, and credits are charged per record RETURNED — so
+      // keep the multiplier modest.
       const params = { page_size: String(limit * 3), page: '1', verified: 'true' };
-      if (req.query.state) params.company_location_states = req.query.state;
-      if (req.query.naics) params.naics_codes = req.query.naics;
-      if (req.query.zip) params.company_location_zipcodes = req.query.zip;
-      if (req.query.name) params.company_name = req.query.name;
+
+      if (req.query.state)  params.company_location_states = req.query.state;
+      if (req.query.city)   params.company_location_cities = req.query.city;   // <- verify name
+      if (req.query.naics)  params.naics_codes = req.query.naics;
+      if (req.query.zip)    params.company_location_zipcodes = req.query.zip;
+      if (req.query.name)   params.company_name = req.query.name;
+      if (req.query.employees_min) params.company_size_from = String(req.query.employees_min);
 
       const data = await callSalesIntel(params);
       const found = (data.search_results || []).map(normalize).filter(c => c.domain);
@@ -149,6 +172,7 @@ export default async function handler(req, res) {
         source: 'live',
         returned: fresh.length,
         filtered_out: found.length - fresh.length,
+        searched: params,          // what we actually asked SalesIntel for
         companies: fresh,
       });
     }

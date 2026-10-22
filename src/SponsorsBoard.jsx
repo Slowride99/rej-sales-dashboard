@@ -86,6 +86,60 @@ function parseQuery(text, fallbackState) {
   return out;
 }
 
+/* ------------------------------------------- apply a filter from /api/ask-board */
+//
+// Runs over rows ALREADY fetched from mv_event_board. The model picked the
+// filter; every number on screen is still the view's. Nothing here can invent
+// a fact — the worst a bad filter does is produce an odd-looking list.
+
+function applyBoardFilter(board, f, maxY) {
+  if (!board) return [];
+  const src = {
+    sponsored: board.sponsored,
+    gap: board.gap,
+    engaged: board.engaged,
+  }[f?.group] || [...board.gap, ...board.engaged, ...board.sponsored];
+
+  if (!f) return src;
+
+  let out = src.filter((r) => {
+    const ys = r.sponsor_years || [];
+    const emails = r.emails == null ? null : Number(r.emails);
+
+    if (f.never_sponsored_here && r.years_sponsored > 0) return false;
+    if (f.lapsed && !(r.years_sponsored > 0 && !ys.includes(maxY))) return false;
+    if (f.lapsed_since != null
+        && !(r.last_sponsored_here != null && r.last_sponsored_here < f.lapsed_since)) return false;
+    if (f.sponsored_in_year != null && !ys.includes(f.sponsored_in_year)) return false;
+    if (f.min_sponsorships_elsewhere != null
+        && (r.sponsorships_total || 0) < f.min_sponsorships_elsewhere) return false;
+    if (f.min_markets != null && (r.markets_sponsored || 0) < f.min_markets) return false;
+    if (f.min_attendees != null && (r.attendees || 0) < f.min_attendees) return false;
+    if (f.min_years_attended != null && (r.years_attended || 0) < f.min_years_attended) return false;
+    if (f.has_spoken && !(r.spoke > 0)) return false;
+    // null emails means NOT KNOWN. It counts as "no contact history" but never
+    // as a zero we could quote back at anyone.
+    if (f.has_contact_history && !(emails > 0)) return false;
+    if (f.no_contact_history && emails > 0) return false;
+    if (f.replied && r.ever_replied !== true) return false;
+    if (f.not_contacted_since
+        && !(r.last_emailed == null || r.last_emailed < f.not_contacted_since)) return false;
+    return true;
+  });
+
+  const by = {
+    sponsorships: (a, b) => (b.sponsorships_total || 0) - (a.sponsorships_total || 0),
+    markets:      (a, b) => (b.markets_sponsored || 0) - (a.markets_sponsored || 0),
+    emails:       (a, b) => (b.emails || 0) - (a.emails || 0),
+    attendees:    (a, b) => (b.attendees || 0) - (a.attendees || 0),
+    last_emailed: (a, b) => String(b.last_emailed || '').localeCompare(String(a.last_emailed || '')),
+    name:         (a, b) => String(a.company).localeCompare(String(b.company)),
+  }[f.sort];
+  if (by) out = [...out].sort(by);
+  if (f.limit) out = out.slice(0, f.limit);
+  return out;
+}
+
 /* ---------------------------------------------------------------- helpers */
 
 const n = (v) => (v == null ? null : Number(v));
@@ -512,6 +566,9 @@ export default function SponsorsBoard() {
   const [q, setQ] = useState('');
   const [chip, setChip] = useState(null);
   const [pick, setPick] = useState(null);
+  const [ai, setAi] = useState(null);
+  const [asking, setAsking] = useState(false);
+  const [askErr, setAskErr] = useState(null);
 
   const { notes, saving, onChange, onBlur } = useNotes(series);
 
@@ -537,8 +594,33 @@ export default function SponsorsBoard() {
 
   const maxY = board ? Math.max(...board.years) : null;
 
+  const ask = useCallback(async (e) => {
+    e?.preventDefault();
+    const question = q.trim();
+    if (!question) { setAi(null); setAskErr(null); return; }
+    setAsking(true); setAskErr(null);
+    try {
+      const d = await getJSON('/api/ask-board', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      });
+      if (d.unsupported) { setAi(null); setAskErr(d.message); }
+      else { setAi(d); setChip(null); }
+    } catch (err) {
+      setAskErr(err.message);
+    } finally {
+      setAsking(false);
+    }
+  }, [q]);
+
+  const clearAsk = useCallback(() => {
+    setAi(null); setAskErr(null); setQ('');
+  }, []);
+
   const callList = useMemo(() => {
     if (!board) return [];
+    if (ai?.filter) return applyBoardFilter(board, ai.filter, maxY);
     let rows = [...board.gap, ...board.engaged];
     if (chip === 'gap') rows = board.gap;
     if (chip === 'lapsed') rows = board.sponsored.filter((r) => !(r.sponsor_years || []).includes(maxY));
@@ -552,7 +634,7 @@ export default function SponsorsBoard() {
                                    || ((b.emails || 0) - (a.emails || 0)));
     }
     return rows;
-  }, [board, chip, q, maxY]);
+  }, [board, chip, q, maxY, ai]);
 
   const signedNow = useMemo(
     () => (board ? board.sponsored.filter((r) => (r.sponsor_years || []).includes(maxY)) : []),
@@ -623,15 +705,35 @@ export default function SponsorsBoard() {
           </div>
         ) : (
           <>
-            <div className="search">
-              <input placeholder="Filter by company name…" value={q}
-                     onChange={(e) => setQ(e.target.value)} />
-            </div>
+            <form className="search" onSubmit={ask}>
+              <input
+                placeholder="Ask for a list — who sponsored in 2023 but hasn't since?"
+                value={q}
+                onChange={(e) => { setQ(e.target.value); if (ai) setAi(null); }}
+              />
+              <button className="btn-go" disabled={asking}>
+                {asking ? 'Thinking…' : 'Ask'}
+              </button>
+              {(ai || askErr) && (
+                <button type="button" className="themebtn" onClick={clearAsk}>Clear</button>
+              )}
+            </form>
+
+            {/* Typing filters by name as you go; pressing Ask sends the
+                sentence to the model, which returns a filter — never numbers. */}
+            {ai && (
+              <p className="askedlabel">
+                <span className="sic">{ai.label}</span>
+                <span className="dim"> · {callList.length} companies</span>
+              </p>
+            )}
+            {askErr && <p className="askedlabel dim">{askErr}</p>}
 
             <div className="chips">
               {CHIPS.map((c) => (
                 <button key={c.id} className={`chip${chip === c.id ? ' chip-on' : ''}`}
-                        onClick={() => setChip(chip === c.id ? null : c.id)}>{c.label}</button>
+                        onClick={() => { setAi(null); setAskErr(null);
+                                         setChip(chip === c.id ? null : c.id); }}>{c.label}</button>
               ))}
             </div>
 
@@ -698,8 +800,9 @@ export default function SponsorsBoard() {
                     <header className="col-h">
                       <h2 className="col-t">Worth a call <span className="ct">{callList.length}</span></h2>
                       <p className="col-s">
-                        {chip ? CHIPS.find((c) => c.id === chip).label
-                              : 'Ranked by what they buy from us elsewhere. Anyone signed for this year is out.'}
+                        {ai ? `Answering: "${ai.question || q}"`
+                            : chip ? CHIPS.find((c) => c.id === chip).label
+                            : 'Ranked by what they buy from us elsewhere. Anyone signed for this year is out.'}
                       </p>
                     </header>
                     <div className="col-body">

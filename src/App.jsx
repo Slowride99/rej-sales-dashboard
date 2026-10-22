@@ -398,6 +398,8 @@ export default function App() {
 
   const recommended = applyFilter(board.recommended || []);
 
+  if (tab === 'board') return <SponsorsBoard />; 
+
   return (
     <div style={sx.page}>
       <header style={sx.top}>

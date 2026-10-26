@@ -39,23 +39,42 @@ const CHIPS = [
 // quietly ignored half the sentence.
 
 const TRADES = [
-  { code: '531210', label: 'brokers',               words: ['broker', 'brokerage', 'agent'] },
-  { code: '531120', label: 'building owners',       words: ['owner', 'landlord', 'lessor'] },
-  { code: '531312', label: 'property managers',     words: ['property manager', 'property management'] },
-  { code: '531390', label: 'real estate services',  words: ['real estate', 'realty', 'cre'] },
-  { code: '236220', label: 'commercial builders',   words: ['construction', 'contractor', 'builder', 'general contractor'] },
-  { code: '237210', label: 'land developers',       words: ['land', 'developer', 'development', 'subdivision'] },
-  { code: '541310', label: 'architects',            words: ['architect', 'architecture'] },
-  { code: '541330', label: 'engineers',             words: ['engineer', 'engineering', 'civil'] },
-  { code: '522292', label: 'real estate lenders',   words: ['lender', 'lending', 'mortgage', 'debt', 'capital'] },
+  { code: '531210', label: 'brokers',              words: ['broker', 'brokerage', 'agent'] },
+  { code: '531120', label: 'building owners',      words: ['owner', 'landlord', 'lessor'] },
+  { code: '531312', label: 'property managers',    words: ['property manager', 'property management'] },
+  { code: '531390', label: 'real estate services', words: ['real estate', 'realty', 'cre'] },
+  { code: '236220', label: 'commercial builders',  words: ['construction', 'contractor', 'builder', 'general contractor'] },
+  { code: '237210', label: 'land developers',      words: ['land', 'developer', 'development', 'subdivision'] },
+  { code: '541310', label: 'architects',           words: ['architect', 'architecture'] },
+  { code: '541330', label: 'engineers',            words: ['engineer', 'engineering', 'civil'] },
+  { code: '522292', label: 'real estate lenders',  words: ['lender', 'lending', 'mortgage', 'debt', 'capital'] },
 ];
 
-const CITIES = [
-  'Dallas', 'Fort Worth', 'Houston', 'Austin', 'San Antonio', 'Plano', 'Irving',
-  'Arlington', 'Frisco', 'McKinney', 'Chicago', 'Minneapolis', 'Saint Paul',
-  'Milwaukee', 'Indianapolis', 'Columbus', 'Cleveland', 'Detroit',
-  'Kansas City', 'Saint Louis', 'Omaha',
+// SalesIntel has NO city filter — it isn't in their API at all. The documented
+// way to target a metro is a central ZIP plus a radius in miles, which also
+// behaves better here: "Dallas" as a city string misses Irving, Plano and
+// Richardson, which are exactly the industrial submarkets that matter.
+const METROS = [
+  { name: 'Dallas',       zip: '75201', state: 'TX' },
+  { name: 'Fort Worth',   zip: '76102', state: 'TX' },
+  { name: 'Houston',      zip: '77002', state: 'TX' },
+  { name: 'Austin',       zip: '78701', state: 'TX' },
+  { name: 'San Antonio',  zip: '78205', state: 'TX' },
+  { name: 'Chicago',      zip: '60601', state: 'IL' },
+  { name: 'Minneapolis',  zip: '55401', state: 'MN' },
+  { name: 'Saint Paul',   zip: '55101', state: 'MN' },
+  { name: 'Milwaukee',    zip: '53202', state: 'WI' },
+  { name: 'Indianapolis', zip: '46204', state: 'IN' },
+  { name: 'Columbus',     zip: '43215', state: 'OH' },
+  { name: 'Cleveland',    zip: '44113', state: 'OH' },
+  { name: 'Detroit',      zip: '48226', state: 'MI' },
+  { name: 'Kansas City',  zip: '64106', state: 'MO' },
+  { name: 'Saint Louis',  zip: '63101', state: 'MO' },
+  { name: 'Omaha',        zip: '68102', state: 'NE' },
 ];
+const METRO_ALIASES = { 'dfw': 'Dallas', 'ft worth': 'Fort Worth', 'st paul': 'Saint Paul',
+                        'st. paul': 'Saint Paul', 'st louis': 'Saint Louis',
+                        'st. louis': 'Saint Louis', 'twin cities': 'Minneapolis' };
 
 const STATES = {
   tx: 'TX', texas: 'TX', il: 'IL', illinois: 'IL', mn: 'MN', minnesota: 'MN',
@@ -67,21 +86,29 @@ const STATES = {
 function parseQuery(text, fallbackState) {
   const s = String(text || '').toLowerCase().trim();
   if (!s) return { state: fallbackState };
-  const out = {};
+  const out = { radius: 25 };
 
   const trade = TRADES.find((t) => t.words.some((w) => s.includes(w)));
   if (trade) { out.naics = trade.code; out.tradeLabel = trade.label; }
 
-  const city = CITIES.find((c) => s.includes(c.toLowerCase()));
-  if (city) out.city = city;
+  let metroName = null;
+  for (const [alias, real] of Object.entries(METRO_ALIASES)) {
+    if (s.includes(alias)) { metroName = real; break; }
+  }
+  if (!metroName) metroName = METROS.find((m) => s.includes(m.name.toLowerCase()))?.name || null;
 
-  for (const [word, code] of Object.entries(STATES)) {
-    if (new RegExp(`\\b${word}\\b`).test(s)) { out.state = code; break; }
+  const metro = METROS.find((m) => m.name === metroName);
+  if (metro) { out.zip = metro.zip; out.metro = metro.name; out.state = metro.state; }
+
+  if (!out.state) {
+    for (const [word, code] of Object.entries(STATES)) {
+      if (new RegExp(`\\b${word}\\b`).test(s)) { out.state = code; break; }
+    }
   }
   if (!out.state) out.state = fallbackState;
 
   // nothing recognised: send it as a name search rather than dropping it
-  if (!trade && !city) out.name = String(text).trim();
+  if (!trade && !metro) out.name = String(text).trim();
 
   return out;
 }
@@ -469,7 +496,7 @@ function SalesIntel({ market }) {
     setState('loading'); setMsg(null);
     const qs = new URLSearchParams({ discover: '1', limit: '8' });
     if (parsed.state) qs.set('state', parsed.state);
-    if (parsed.city) qs.set('city', parsed.city);
+    if (parsed.zip) { qs.set('zip', parsed.zip); qs.set('radius', String(parsed.radius || 25)); }
     if (parsed.naics) qs.set('naics', parsed.naics);
     if (parsed.name) qs.set('name', parsed.name);
     try {
@@ -512,10 +539,10 @@ function SalesIntel({ market }) {
           </button>
         </form>
 
-        {(parsed.tradeLabel || parsed.city || parsed.state || parsed.name) && (
+        {(parsed.tradeLabel || parsed.metro || parsed.state || parsed.name) && (
           <div className="si-chips">
             {parsed.tradeLabel && <span className="sic">{parsed.tradeLabel}</span>}
-            {parsed.city && <span className="sic">{parsed.city}</span>}
+            {parsed.metro && <span className="sic">{parsed.metro} +{parsed.radius}mi</span>}
             {parsed.state && <span className="sic">{parsed.state}</span>}
             {parsed.name && <span className="sic sic-dim">name: {parsed.name}</span>}
           </div>

@@ -31,23 +31,16 @@ const CHIPS = [
   { id: 'biggest', label: 'biggest spenders' },
 ];
 
-/* ------------------------------------------- free-text -> SalesIntel query */
-//
-// "brokers in dallas" is not something the SalesIntel API understands, so it is
-// parsed here into the parameters it does take, and the result is shown back to
-// the user as removable chips. Guessing silently would mean a search that
-// quietly ignored half the sentence.
-
+// SalesIntel stores 4-digit NAICS, not 6 — a real record carries
+// naics_codes: ["3371","4491"]. Six-digit codes match nothing.
 const TRADES = [
-  { code: '531210', label: 'brokers',              words: ['broker', 'brokerage', 'agent'] },
-  { code: '531120', label: 'building owners',      words: ['owner', 'landlord', 'lessor'] },
-  { code: '531312', label: 'property managers',    words: ['property manager', 'property management'] },
-  { code: '531390', label: 'real estate services', words: ['real estate', 'realty', 'cre'] },
-  { code: '236220', label: 'commercial builders',  words: ['construction', 'contractor', 'builder', 'general contractor'] },
-  { code: '237210', label: 'land developers',      words: ['land', 'developer', 'development', 'subdivision'] },
-  { code: '541310', label: 'architects',           words: ['architect', 'architecture'] },
-  { code: '541330', label: 'engineers',            words: ['engineer', 'engineering', 'civil'] },
-  { code: '522292', label: 'real estate lenders',  words: ['lender', 'lending', 'mortgage', 'debt', 'capital'] },
+  { code: '5312', label: 'brokers',               words: ['broker', 'brokerage', 'agent'] },
+  { code: '5311', label: 'building owners',       words: ['owner', 'landlord', 'lessor'] },
+  { code: '5313', label: 'property / RE services', words: ['property manager', 'property management', 'real estate', 'realty', 'cre'] },
+  { code: '2362', label: 'commercial builders',   words: ['construction', 'contractor', 'builder', 'general contractor'] },
+  { code: '2372', label: 'land developers',       words: ['land', 'developer', 'development', 'subdivision'] },
+  { code: '5413', label: 'architects / engineers', words: ['architect', 'architecture', 'engineer', 'engineering', 'civil'] },
+  { code: '5222', label: 'real estate lenders',   words: ['lender', 'lending', 'mortgage', 'debt', 'capital'] },
 ];
 
 // SalesIntel has NO city filter — it isn't in their API at all. The documented

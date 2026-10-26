@@ -74,20 +74,41 @@ async function callSalesIntel(params) {
   return r.json();
 }
 
-/** Flatten SalesIntel's nested shape into what the dashboard renders. */
+/** Flatten SalesIntel's nested shape into what the dashboard renders.
+ *  Field names here are taken from a real /service/company response, not
+ *  guessed — the previous version read company_domain, addresses[] and
+ *  employee_count, none of which exist, so every record was silently dropped
+ *  by the .filter(c => c.domain) below. */
 function normalize(rec) {
-  const c = rec.company || rec;
-  const addr = (rec.addresses || c.addresses || [])[0] || {};
+  const c = rec.company || {};
+  const loc = (rec.locations || []).find(l => l.is_ushq) || (rec.locations || [])[0] || {};
+
+  const domain = (
+    rec.primary_domain ||
+    (rec.company_domains || [])[0] ||
+    (c.domains || [])[0] || ''
+  ).toLowerCase();
+
+  // rec.location is a "Houston, TX" string — fallback when locations[] is absent
+  const [locCity, locState] = String(rec.location || '').split(',').map(s => s.trim());
+
   return {
-    name: c.company_name || c.name || '',
-    domain: (c.company_domain || c.domain || '').toLowerCase(),
-    industry: c.industry || c.primary_industry || '',
-    employees: c.employee_count || c.employee_range || null,
-    revenue: c.revenue || c.revenue_range || null,
-    city: addr.city || c.city || '',
-    state: addr.state || c.state || '',
-    linkedin: (rec.social_profiles || []).find(s => /linkedin/i.test(s.type || s.url || ''))?.url || '',
-    naics: c.naics_code || '',
+    name: rec.company_name || rec.primary_name || c.name || '',
+    domain,
+    industry: rec.industry || '',
+    sector: rec.sector || '',
+    employees: rec.company_size ?? c.size ?? null,
+    employees_range: rec.company_size_range || c.size_range || '',
+    revenue: rec.company_revenue ?? c.revenue ?? null,   // in MILLIONS
+    revenue_range: rec.company_revenue_range || c.revenue_range || '',
+    city: loc.city || locCity || '',
+    state: loc.state || locState || '',
+    postal: loc.postal_code || '',
+    linkedin: rec.linkedin_url || c.linkedin_url || '',
+    naics: rec.naics_code || (c.naics_codes || [])[0] || '',
+    specialties: rec.specialties || [],
+    logo: rec.logo_url || '',
+    id: rec.company_id || c.id || null,
   };
 }
 

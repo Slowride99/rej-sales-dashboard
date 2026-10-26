@@ -31,16 +31,23 @@ const CHIPS = [
   { id: 'biggest', label: 'biggest spenders' },
 ];
 
+/* ------------------------------------------- free-text -> SalesIntel query */
+//
+// "brokers in dallas" is not something the SalesIntel API understands, so it is
+// parsed here into the parameters it does take, and the result is shown back to
+// the user as removable chips. Guessing silently would mean a search that
+// quietly ignored half the sentence.
+
 // SalesIntel stores 4-digit NAICS, not 6 — a real record carries
-// naics_codes: ["3371","4491"]. Six-digit codes match nothing.
+// naics_codes: ["3371","4491"]. Six-digit codes match nothing at all.
 const TRADES = [
-  { code: '5312', label: 'brokers',               words: ['broker', 'brokerage', 'agent'] },
-  { code: '5311', label: 'building owners',       words: ['owner', 'landlord', 'lessor'] },
+  { code: '5312', label: 'brokers',                words: ['broker', 'brokerage', 'agent'] },
+  { code: '5311', label: 'building owners',        words: ['owner', 'landlord', 'lessor'] },
   { code: '5313', label: 'property / RE services', words: ['property manager', 'property management', 'real estate', 'realty', 'cre'] },
-  { code: '2362', label: 'commercial builders',   words: ['construction', 'contractor', 'builder', 'general contractor'] },
-  { code: '2372', label: 'land developers',       words: ['land', 'developer', 'development', 'subdivision'] },
+  { code: '2362', label: 'commercial builders',    words: ['construction', 'contractor', 'builder', 'general contractor'] },
+  { code: '2372', label: 'land developers',        words: ['land', 'developer', 'development', 'subdivision'] },
   { code: '5413', label: 'architects / engineers', words: ['architect', 'architecture', 'engineer', 'engineering', 'civil'] },
-  { code: '5222', label: 'real estate lenders',   words: ['lender', 'lending', 'mortgage', 'debt', 'capital'] },
+  { code: '5222', label: 'real estate lenders',    words: ['lender', 'lending', 'mortgage', 'debt', 'capital'] },
 ];
 
 // SalesIntel has NO city filter — it isn't in their API at all. The documented
@@ -79,7 +86,9 @@ const STATES = {
 function parseQuery(text, fallbackState) {
   const s = String(text || '').toLowerCase().trim();
   if (!s) return { state: fallbackState };
-  const out = { radius: 25 };
+  // A floor on headcount. Without it the list fills with two-person shops and
+  // real estate academies, which is what 5312 returns in volume.
+  const out = { radius: 25, employees_min: 10 };
 
   const trade = TRADES.find((t) => t.words.some((w) => s.includes(w)));
   if (trade) { out.naics = trade.code; out.tradeLabel = trade.label; }
@@ -421,6 +430,55 @@ function Detail({ r, years, note, saveState, onNote, onNoteBlur, onClose }) {
         </header>
 
         <div className="detail-b">
+          {r.discovered && (
+            <>
+              <section>
+                <h3 className="dsec">From SalesIntel</h3>
+                {r.si.industry && <Fact label="Industry">{r.si.industry}</Fact>}
+                {r.si.sector && <Fact label="Sector">{r.si.sector}</Fact>}
+                {(r.si.employees_range || r.si.employees) &&
+                  <Fact label="Headcount">{r.si.employees_range || r.si.employees}</Fact>}
+                {(r.si.revenue_range || r.si.revenue != null) &&
+                  <Fact label="Revenue">{r.si.revenue_range
+                    || `$${r.si.revenue}M`}</Fact>}
+                {(r.si.city || r.si.state) &&
+                  <Fact label="Location">{[r.si.city, r.si.state].filter(Boolean).join(', ')}</Fact>}
+                {r.si.naics && <Fact label="NAICS">{r.si.naics}</Fact>}
+                {!!(r.si.specialties || []).length && (
+                  <Fact label="Keywords">{r.si.specialties.slice(0, 8).join(', ')}</Fact>
+                )}
+              </section>
+
+              <section>
+                <h3 className="dsec">Open</h3>
+                <div className="dlinks">
+                  {r.si.domain && (
+                    <a className="btn-wide" target="_blank" rel="noreferrer"
+                       href={`https://${r.si.domain}`}>Website</a>
+                  )}
+                  {r.si.linkedin && (
+                    <a className="btn-wide" target="_blank" rel="noreferrer"
+                       href={r.si.linkedin.startsWith('http') ? r.si.linkedin
+                             : `https://${r.si.linkedin}`}>LinkedIn</a>
+                  )}
+                </div>
+                <p className="dnote" style={{ marginTop: 10 }}>
+                  No history with us — this firm appears nowhere in PheedLoop or the
+                  contact index. A note here puts it in <b>This event</b> so it can be
+                  assigned like any other call.
+                </p>
+              </section>
+
+              <section>
+                <h3 className="dsec">Notes</h3>
+                <NoteBox k={r.key} note={note} saveState={saveState}
+                         onNote={onNote} onNoteBlur={onNoteBlur}
+                         placeholder="Who's calling this one, and why" />
+              </section>
+            </>
+          )}
+
+          {!r.discovered && <>
           <section>
             <h3 className="dsec">This event</h3>
             <div className="dyears">
@@ -468,6 +526,7 @@ function Detail({ r, years, note, saveState, onNote, onNoteBlur, onClose }) {
                      onNote={onNote} onNoteBlur={onNoteBlur}
                      placeholder="What was said, what's next, who owns it" />
           </section>
+          </>}
         </div>
       </aside>
     </div>
@@ -476,7 +535,23 @@ function Detail({ r, years, note, saveState, onNote, onNoteBlur, onClose }) {
 
 /* --------------------------------------------------------------- salesintel */
 
-function SalesIntel({ market }) {
+// A SalesIntel hit dressed as a board row so the same detail panel and the same
+// note store can handle it. The `si:` key prefix keeps it from ever colliding
+// with a real company key — and because event_notes has no foreign key into
+// company_facts, a note against it just works.
+function discoveredRow(c) {
+  return {
+    key: `si:${c.domain}`,
+    company: c.name || c.domain,
+    discovered: true,
+    si: c,
+    sponsor_years: null, years_sponsored: 0, attendees: 0, years_attended: 0,
+    spoke: 0, sponsorships_total: 0, markets_sponsored: 0,
+    emails: null, ever_replied: null, domains: c.domain,
+  };
+}
+
+function SalesIntel({ market, onPick }) {
   const [text, setText] = useState('');
   const [state, setState] = useState('idle');
   const [found, setFound] = useState([]);
@@ -492,6 +567,7 @@ function SalesIntel({ market }) {
     if (parsed.zip) { qs.set('zip', parsed.zip); qs.set('radius', String(parsed.radius || 25)); }
     if (parsed.naics) qs.set('naics', parsed.naics);
     if (parsed.name) qs.set('name', parsed.name);
+    if (parsed.employees_min) qs.set('employees_min', String(parsed.employees_min));
     try {
       const d = await getJSON(`/api/salesintel?${qs}`);
       setFound(d.companies || []);
@@ -542,11 +618,14 @@ function SalesIntel({ market }) {
         )}
 
         {found.map((c, i) => (
-          <article className="icard" key={c.domain || i}>
-            <div className="icard-name">{c.name || c.domain}</div>
+          <article className="icard icard-hit" key={c.domain || i}
+                   onClick={() => onPick(discoveredRow(c))}>
+            <div className="icard-name">{c.name || c.domain || 'Unnamed company'}</div>
             <div className="icard-facts">
-              {[c.industry, [c.city, c.state].filter(Boolean).join(', '), c.employees && `${c.employees} staff`]
-                .filter(Boolean).join(' · ')}
+              {[c.industry,
+                [c.city, c.state].filter(Boolean).join(', '),
+                c.employees_range ? `${c.employees_range} staff` : (c.employees && `${c.employees} staff`),
+               ].filter(Boolean).join(' · ')}
             </div>
             {c.domain && <div className="icard-dom">{c.domain}</div>}
           </article>
@@ -586,6 +665,7 @@ export default function SponsorsBoard() {
   const [q, setQ] = useState('');
   const [chip, setChip] = useState(null);
   const [pick, setPick] = useState(null);
+  const [discovered, setDiscovered] = useState({});   // si:<domain> -> name
   const [ai, setAi] = useState(null);
   const [asking, setAsking] = useState(false);
   const [askErr, setAskErr] = useState(null);
@@ -661,9 +741,15 @@ export default function SponsorsBoard() {
     [board, maxY]
   );
 
-  const byKey = useMemo(() => new Map(
-    board ? [...board.sponsored, ...board.gap, ...board.engaged].map((r) => [r.key, r]) : []
-  ), [board]);
+  const byKey = useMemo(() => {
+    const m = new Map(
+      board ? [...board.sponsored, ...board.gap, ...board.engaged].map((r) => [r.key, r]) : []
+    );
+    // discovered firms too, so a note against one shows its name in the log
+    // rather than a bare si:domain key
+    for (const [k, row] of Object.entries(discovered)) m.set(k, row);
+    return m;
+  }, [board, discovered]);
 
   const log = useMemo(() => Object.entries(notes)
     .filter(([, v]) => v?.body?.trim())
@@ -857,7 +943,13 @@ export default function SponsorsBoard() {
                     </div>
                   </section>
 
-                  <SalesIntel market={market} />
+                  <SalesIntel
+                    market={market}
+                    onPick={(row) => {
+                      setDiscovered((d) => ({ ...d, [row.key]: row }));
+                      setPick(row);
+                    }}
+                  />
                 </div>
               </>
             )}

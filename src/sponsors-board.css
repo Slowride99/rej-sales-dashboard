@@ -325,3 +325,11 @@
 .askedlabel{ display:flex; align-items:center; gap:6px; flex-wrap:wrap;
              margin:11px 0 0; font-size:12.5px }
 .askedlabel .sic{ font-size:12px; padding:3px 10px }
+
+/* -------------------------------------------- discovered-company affordances */
+
+.icard-hit{ cursor:pointer }
+.icard-hit:hover{ border-color:var(--soft) }
+
+.dlinks{ display:flex; gap:8px }
+.dlinks .btn-wide{ text-align:center; text-decoration:none; display:block }

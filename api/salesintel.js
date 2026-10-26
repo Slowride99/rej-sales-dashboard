@@ -154,6 +154,11 @@ export default async function handler(req, res) {
       if (req.query.revenue_max) params.company_max_revenue = String(req.query.revenue_max);
  
       const data = await callSalesIntel(params);
+       // TEMPORARY — ?raw=1 returns SalesIntel's untouched response so we can
+        // see the real keys and any message. Delete once the shape is confirmed.
+      if (req.query.raw) {
+        return res.json({ searched: params, raw: data });
+      }
       const found = (data.search_results || []).map(normalize).filter(c => c.domain);
  
       // drop anything already in our own records

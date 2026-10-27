@@ -53,7 +53,7 @@ function MailHistory({ company }) {
           Connect your Microsoft account to see your own email with this company.
           You authorize your own mailbox — nobody else&apos;s.
         </p>
-        <a href="/api/auth/login" style={{ ...s.btn, textDecoration: 'none', display: 'inline-block' }}>
+        <a href="/api/outlook/connect" style={{ ...s.btn, textDecoration: 'none', display: 'inline-block' }}>
           Connect Outlook
         </a>
       </div>

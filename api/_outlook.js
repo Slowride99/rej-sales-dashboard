@@ -191,6 +191,11 @@ export function rowsFor(msg, account) {
       counterparty_domain: domain,
       counterparty_name: (p?.emailAddress?.name || '').slice(0, 200) || null,
       folder: msg.parentFolderId || null,
+      // Deep link into Outlook. Mail.ReadBasic excludes body, previewBody and
+      // attachments — webLink is none of those, so it comes through. Opening it
+      // requires being signed in as the mailbox owner, so the thread stays
+      // gated by Microsoft even when the subject line is visible to the team.
+      web_link: msg.webLink || null,
     });
   }
   return rows;

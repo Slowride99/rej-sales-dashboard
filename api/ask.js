@@ -11,7 +11,7 @@
 //
 // Env: ANTHROPIC_API_KEY
 
-const MODEL = 'claude-sonnet-4-6';
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 
 // Anything not in here is ignored when the filter is applied.
 const SCHEMA = `{

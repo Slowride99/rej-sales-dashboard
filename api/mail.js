@@ -6,6 +6,10 @@
 //   GET /api/mail?q=Pace%20Group        -> by company name
 //   GET /api/mail?key=pace%20loan       -> by company key (preferred — exact)
 //   GET /api/mail?domain=paceloan.com   -> by domain
+//   GET /api/mail?series=<name>         -> latest mail with ANY company on
+//                                          that event's board — the activity
+//                                          feed, scoped so unrelated mail from
+//                                          the mailbox never appears
 //
 // WHAT CHANGED AND WHY
 //
@@ -48,6 +52,24 @@ async function sb(path) {
 
 const clean = (s) => String(s || '').replace(/[%,()]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 
+/** Every domain belonging to a company on this event's board.
+ *  Scoping matters: without it an "activity feed" would show whatever happened
+ *  to be newest in the mailbox, including mail that has nothing to do with the
+ *  event or with sponsorship at all. */
+async function domainsForSeries(series) {
+  const rows = await sb(
+    `mv_event_board?series=eq.${encodeURIComponent(series)}&select=domains&limit=500`
+  );
+  const out = new Set();
+  for (const r of rows) {
+    for (const d of String(r.domains || '').split(',')) {
+      const t = d.trim().toLowerCase();
+      if (t) out.add(t);
+    }
+  }
+  return [...out];
+}
+
 /** Which domains belong to this company. */
 async function domainsFor({ domain, key, q }) {
   if (domain) return [String(domain).toLowerCase().trim()];
@@ -85,11 +107,13 @@ export default async function handler(req, res) {
       return res.status(200).json({ connected, user, messages: [] });
     }
 
-    const domains = await domainsFor({
-      domain: req.query.domain,
-      key: req.query.key,
-      q: req.query.q,
-    });
+    const domains = req.query.series
+      ? await domainsForSeries(req.query.series)
+      : await domainsFor({
+          domain: req.query.domain,
+          key: req.query.key,
+          q: req.query.q,
+        });
 
     if (!domains.length) {
       return res.status(200).json({
@@ -113,6 +137,20 @@ export default async function handler(req, res) {
       'outlook_messages?select=sent_at&order=sent_at.asc&limit=1'
     );
 
+    // For the feed, each row needs a company name — the panel is showing mail
+    // across many companies, so the counterparty domain alone is not enough.
+    let nameByDomain = {};
+    if (req.query.series) {
+      const seen = [...new Set(rows.map((r) => r.counterparty_domain))];
+      if (seen.length) {
+        const named = await sb(
+          `company_domains?domain=in.(${seen.map(encodeURIComponent).join(',')})` +
+          '&select=domain,company_name'
+        );
+        nameByDomain = Object.fromEntries(named.map((r) => [r.domain, r.company_name]));
+      }
+    }
+
     const messages = rows.map((m) => ({
       subject: m.subject || '(no subject)',
       direction: m.direction,                       // 'out' = we sent it
@@ -120,6 +158,8 @@ export default async function handler(req, res) {
       fromAddress: m.direction === 'out' ? user : m.counterparty_email,
       to: m.direction === 'out' ? (m.counterparty_name || m.counterparty_email) : user,
       date: m.sent_at,
+      domain: m.counterparty_domain,
+      company: nameByDomain[m.counterparty_domain] || m.counterparty_domain,
       preview: '',            // headers only — Mail.ReadBasic cannot read bodies
       // Opens the real thread in Outlook. Only works for the mailbox owner —
       // anyone else gets a permission error from Microsoft, which is the

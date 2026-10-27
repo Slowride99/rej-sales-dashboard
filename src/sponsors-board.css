@@ -333,3 +333,41 @@
 
 .dlinks{ display:flex; gap:8px }
 .dlinks .btn-wide{ text-align:center; text-decoration:none; display:block }
+
+/* ------------------------------------------------------------ mail panels */
+
+.band-3{ grid-template-columns:1.25fr 1fr 1fr }
+@media (max-width:1240px){ .band-3{ grid-template-columns:1fr 1fr } }
+@media (max-width:1040px){ .band-3{ grid-template-columns:1fr } }
+
+/* the grid gets less room in a three-up band, so tighten its name column */
+.band-3 .grid-head,.band-3 .grow-hit{
+  grid-template-columns:minmax(90px,1fr) repeat(var(--yc),26px) 72px;
+}
+.band-3 .grid-head.g-else,.band-3 .grow.g-else .grow-hit{
+  grid-template-columns:minmax(90px,1fr) repeat(var(--yc),26px) 46px 72px;
+}
+.band-3 .mono{ width:24px; height:22px; font-size:8.5px }
+.band-3 .grow-name{ font-size:12.5px }
+
+.mrow{
+  background:var(--card); border:1px solid var(--edge); border-radius:6px;
+  padding:8px 10px; cursor:pointer;
+}
+.mrow:hover{ border-color:var(--soft) }
+.mlist{ display:grid; gap:8px }
+.mlist .mrow{ cursor:default }
+
+.mrow-h{ display:flex; align-items:baseline; gap:7px }
+.mrow-co{ font-size:12px; font-weight:600; flex:1; min-width:0;
+          overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.mrow-d{ color:var(--faint); font-size:10.5px; white-space:nowrap }
+.mrow-s{ color:var(--soft); font-size:11.5px; margin-top:3px; line-height:1.4;
+         overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+
+/* direction is carried by an arrow AND a colour, never colour alone */
+.mdir{ font-size:11px; line-height:1 }
+.mdir-out{ color:var(--paid) }
+.mdir-in{ color:var(--lapsed) }
+
+.mrow-link{ display:inline-block; margin-top:5px; font-size:11px; color:var(--tx) }

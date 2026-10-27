@@ -520,6 +520,13 @@ function Detail({ r, years, note, saveState, onNote, onNoteBlur, onClose }) {
             )}
           </section>
 
+          {emails != null && (
+            <section>
+              <h3 className="dsec">Messages</h3>
+              <CompanyMail companyKey={r.key} domains={r.domains} />
+            </section>
+          )}
+
           <section>
             <h3 className="dsec">Notes</h3>
             <NoteBox k={r.key} note={note} saveState={saveState}
@@ -529,6 +536,144 @@ function Detail({ r, years, note, saveState, onNote, onNoteBlur, onClose }) {
           </>}
         </div>
       </aside>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------ mail panels */
+
+const mailDate = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+};
+
+// The live feed. Scoped to companies on this board, so unrelated mail from the
+// connected mailbox never surfaces here.
+function RecentContact({ series, onPickDomain }) {
+  const [state, setState] = useState({ loading: true, connected: false, messages: [] });
+
+  useEffect(() => {
+    if (!series) return;
+    let alive = true;
+    setState((s) => ({ ...s, loading: true }));
+    getJSON(`/api/mail?series=${encodeURIComponent(series)}&top=14`)
+      .then((d) => { if (alive) setState({ loading: false, ...d, messages: d.messages || [] }); })
+      .catch(() => { if (alive) setState({ loading: false, connected: false, messages: [] }); });
+    return () => { alive = false; };
+  }, [series]);
+
+  return (
+    <section className="col">
+      <header className="col-h">
+        <h2 className="col-t">
+          Recent contact <span className="ct">{state.messages.length || ''}</span>
+        </h2>
+        <p className="col-s">
+          {state.connected
+            ? `Live from ${state.user || 'connected mailboxes'}. Companies on this board only.`
+            : 'Email with companies on this board.'}
+        </p>
+      </header>
+
+      <div className="col-body">
+        {state.loading && <p className="col-note">Loading…</p>}
+
+        {!state.loading && !state.connected && (
+          <>
+            <p className="col-note">No mailbox connected yet.</p>
+            <a className="btn-wide" href="/api/outlook/connect">Connect Outlook</a>
+            <p className="col-note">
+              Reads headers only — who, when, subject. Message bodies are not
+              included in the permission, so they can't be read.
+            </p>
+          </>
+        )}
+
+        {!state.loading && state.connected && state.messages.length === 0 && (
+          <p className="col-note">
+            Nothing yet for these companies
+            {state.covers_from ? ` since ${mailDate(state.covers_from)}` : ''}.
+          </p>
+        )}
+
+        {state.messages.map((m, i) => (
+          <article className="mrow" key={i} onClick={() => onPickDomain?.(m.domain)}>
+            <div className="mrow-h">
+              <span className={`mdir mdir-${m.direction}`}>
+                {m.direction === 'out' ? '→' : '←'}
+              </span>
+              <span className="mrow-co">{cleanName(m.company)}</span>
+              <span className="mrow-d">{mailDate(m.date)}</span>
+            </div>
+            <div className="mrow-s">{m.subject}</div>
+          </article>
+        ))}
+
+        {state.connected && state.covers_from && state.messages.length > 0 && (
+          <p className="col-note">Showing mail since {mailDate(state.covers_from)}.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// Per-company history, inside the slide-over.
+function CompanyMail({ companyKey, domains }) {
+  const [state, setState] = useState({ loading: true, messages: [] });
+
+  useEffect(() => {
+    let alive = true;
+    const qs = domains
+      ? `domain=${encodeURIComponent(String(domains).split(',')[0].trim())}`
+      : `key=${encodeURIComponent(companyKey)}`;
+    getJSON(`/api/mail?${qs}&top=15`)
+      .then((d) => { if (alive) setState({ loading: false, ...d, messages: d.messages || [] }); })
+      .catch(() => { if (alive) setState({ loading: false, messages: [] }); });
+    return () => { alive = false; };
+  }, [companyKey, domains]);
+
+  if (state.loading) return <p className="dnote">Loading mail…</p>;
+
+  if (!state.connected) {
+    return (
+      <p className="dnote">
+        No mailbox connected. <a href="/api/outlook/connect">Connect Outlook</a> to
+        see the messages behind these counts.
+      </p>
+    );
+  }
+
+  if (!state.messages.length) {
+    return (
+      <p className="dnote">
+        No messages on file
+        {state.covers_from ? ` since ${mailDate(state.covers_from)}` : ''}.
+        {state.covers_from && ' Older history is counted above but not yet indexed message by message.'}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mlist">
+      {state.messages.map((m, i) => (
+        <article className="mrow" key={i}>
+          <div className="mrow-h">
+            <span className={`mdir mdir-${m.direction}`}>
+              {m.direction === 'out' ? '→' : '←'}
+            </span>
+            <span className="mrow-co">
+              {m.direction === 'out' ? `to ${m.to}` : `from ${m.from}`}
+            </span>
+            <span className="mrow-d">{mailDate(m.date)}</span>
+          </div>
+          <div className="mrow-s">{m.subject}</div>
+          {m.link && (
+            <a className="mrow-link" href={m.link} target="_blank" rel="noreferrer"
+               onClick={(e) => e.stopPropagation()}>Open in Outlook</a>
+          )}
+        </article>
+      ))}
     </div>
   );
 }
@@ -848,7 +993,7 @@ export default function SponsorsBoard() {
 
             {board && !busy && (
               <>
-                <div className="band">
+                <div className="band band-3">
                   <YearGrid
                     years={board.years}
                     sponsored={board.sponsored}
@@ -880,6 +1025,16 @@ export default function SponsorsBoard() {
                       )}
                     </div>
                   </section>
+
+                  <RecentContact
+                    series={series}
+                    onPickDomain={(d) => {
+                      const hit = [...board.sponsored, ...board.gap, ...board.engaged]
+                        .find((r) => String(r.domains || '').split(',')
+                          .map((x) => x.trim()).includes(d));
+                      if (hit) setPick(hit);
+                    }}
+                  />
                 </div>
 
                 {board.headline && (

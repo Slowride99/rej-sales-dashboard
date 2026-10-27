@@ -187,6 +187,13 @@ function bestDomain(domains) {
   })[0];
 }
 
+// last-resort domain from an address, so a row stays clickable even when the
+// company lookup came back empty
+const domainOfEmail = (e) => {
+  const at = String(e || '').lastIndexOf('@');
+  return at < 0 ? '' : String(e).slice(at + 1).toLowerCase().trim();
+};
+
 const allDomains = (d) =>
   [...new Set(String(d || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean))];
 
@@ -622,14 +629,23 @@ function RecentContact({ series, onPickDomain }) {
           </p>
         )}
 
-        {state.messages.map((m, i) => (
-          <article className="mrow" key={i} onClick={() => onPickDomain?.(m.domain)}
-                   title={`${cleanName(m.company)} — click to open the company`}>
+        {state.messages.map((m, i) => {
+          // The company name is resolved server-side from the domain, but a
+          // domain with no company_name row comes back blank. Fall back through
+          // domain, then the counterparty themselves, so a row is never
+          // anonymous — and stays clickable.
+          const who = m.direction === 'out' ? m.to : m.from;
+          const dom = m.domain || domainOfEmail(m.fromAddress) || domainOfEmail(who);
+          const label = cleanName(m.company) || dom || who || 'Unknown';
+
+          return (
+          <article className="mrow" key={i} onClick={() => dom && onPickDomain?.(dom)}
+                   title={dom ? `${label} — click to open the company` : label}>
             <div className="mrow-h">
               <span className={`mdir mdir-${m.direction}`}>
                 {m.direction === 'out' ? '→' : '←'}
               </span>
-              <span className="mrow-co">{cleanName(m.company)}</span>
+              <span className="mrow-co">{label}</span>
               <span className="mrow-d">{mailDate(m.date)}</span>
             </div>
             <div className="mrow-s">{m.subject}</div>
@@ -638,7 +654,8 @@ function RecentContact({ series, onPickDomain }) {
                  onClick={(e) => e.stopPropagation()}>Open in Outlook</a>
             )}
           </article>
-        ))}
+          );
+        })}
 
         {state.connected && state.covers_from && state.messages.length > 0 && (
           <p className="col-note">Showing mail since {mailDate(state.covers_from)}.</p>
@@ -1203,9 +1220,13 @@ export default function SponsorsBoard() {
                   <RecentContact
                     series={series}
                     onPickDomain={(d) => {
-                      const hit = [...board.sponsored, ...board.gap, ...board.engaged]
-                        .find((r) => String(r.domains || '').split(',')
-                          .map((x) => x.trim()).includes(d));
+                      const rows = [...board.sponsored, ...board.gap, ...board.engaged];
+                      const has = (r, test) =>
+                        allDomains(r.domains).some(test);
+                      const hit = rows.find((r) => has(r, (x) => x === d))
+                        // mail often arrives from a subdomain (eml.cbre.com),
+                        // which would never match a company exactly
+                        || rows.find((r) => has(r, (x) => d.endsWith(`.${x}`) || x.endsWith(`.${d}`)));
                       if (hit) setPick(hit);
                     }}
                   />

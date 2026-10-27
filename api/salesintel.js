@@ -74,6 +74,53 @@ async function callSalesIntel(params) {
   return r.json();
 }
 
+const SI_PEOPLE = 'https://api.salesintel.io/service/people';
+ 
+async function callSalesIntelAt(base, params) {
+  const url = `${base}?${new URLSearchParams(params)}`;
+  const r = await fetch(url, {
+    headers: {
+      'X-CB-ApiKey': process.env.SALESINTEL_API_KEY,
+      Accept: 'application/json',
+    },
+  });
+  if (r.status === 429) {
+    const e = new Error('salesintel_rate_limited');
+    e.code = 429;
+    throw e;
+  }
+  if (r.status === 402) throw new Error('salesintel: out of credits');
+  if (r.status === 403) throw new Error('salesintel: account lacks access to this data');
+  if (!r.ok) throw new Error(`salesintel ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  return r.json();
+}
+ 
+/** One person, flattened. Reads several possible spellings per field because
+ *  the exact shape is unconfirmed — better a blank than a dropped record. */
+function normalizePerson(rec) {
+  const p = rec.contact || rec.person || rec;
+  const first = p.first_name || p.firstname || '';
+  const last = p.last_name || p.lastname || '';
+  const full = p.full_name || p.name || [first, last].filter(Boolean).join(' ');
+  const loc = (rec.locations || p.locations || [])[0] || {};
+ 
+  return {
+    name: full || '',
+    first,
+    last,
+    title: p.job_title || p.title || p.position || '',
+    department: p.department || p.job_department || '',
+    level: p.seniority || p.job_level || p.level || '',
+    email: p.email || p.work_email || p.business_email || '',
+    phone: p.direct_phone || p.phone || p.mobile_phone || '',
+    linkedin: p.linkedin_url || p.linkedin || '',
+    city: loc.city || p.city || '',
+    state: loc.state || p.state || '',
+    company: rec.company_name || p.company_name || '',
+    id: p.contact_id || p.id || rec.match_id || null,
+  };
+}
+
 /** Flatten SalesIntel's nested shape into what the dashboard renders.
  *  Field names here are taken from a real /service/company response, not
  *  guessed — the previous version read company_domain, addresses[] and
@@ -118,6 +165,54 @@ export default async function handler(req, res) {
   }
 
   try {
+    
+    // ---------------- people at one company ----------------
+    if (req.query.people) {
+      const domain = String(req.query.people === '1' ? (req.query.domain || '') : req.query.people)
+        .toLowerCase().trim();
+      if (!domain) return res.status(400).json({ error: 'pass ?people=<domain>' });
+ 
+      const full = !!req.query.full;          // credited; otherwise preview
+      const limit = Math.min(Number(req.query.limit) || 10, 25);
+ 
+      const params = { company_domain: domain, page_size: String(limit), page: '1' };
+      if (req.query.title) params.job_title = req.query.title;
+      if (req.query.department) params.job_department = req.query.department;
+      if (req.query.level) params.job_level = req.query.level;
+ 
+      // The preview path is the non-credited one. Only drop it when the caller
+      // has explicitly asked for details, so a stray click cannot spend money.
+      const base = full ? SI_PEOPLE : `${SI_PEOPLE}/preview`;
+ 
+      let data;
+      try {
+        data = await callSalesIntelAt(base, params);
+      } catch (e) {
+        // If /preview is not available on this account, say so plainly rather
+        // than silently falling back to the paid endpoint.
+        if (!full && /404|not found/i.test(String(e.message))) {
+          return res.status(200).json({
+            domain, preview: true, people: [],
+            note: 'preview is not available on this account — use full=1, which spends credits',
+          });
+        }
+        throw e;
+      }
+ 
+      if (req.query.raw) return res.json({ domain, preview: !full, searched: params, raw: data });
+ 
+      const list = data.search_results || data.results || data.contacts || [];
+      const people = list.map(normalizePerson).filter((p) => p.name || p.title);
+ 
+      return res.json({
+        domain,
+        preview: !full,
+        charged: full ? list.length : 0,
+        total: data.total_count ?? null,
+        returned: people.length,
+        people,
+      });
+    }
     // ---------------- single-company enrichment ----------------
     if (req.query.domain) {
       const domain = String(req.query.domain).toLowerCase().trim();

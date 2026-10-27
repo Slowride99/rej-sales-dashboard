@@ -470,6 +470,11 @@ function Detail({ r, years, note, saveState, onNote, onNoteBlur, onClose }) {
               </section>
 
               <section>
+                <h3 className="dsec">People</h3>
+                <Contacts domain={r.si.domain} />
+              </section>
+
+              <section>
                 <h3 className="dsec">Notes</h3>
                 <NoteBox k={r.key} note={note} saveState={saveState}
                          onNote={onNote} onNoteBlur={onNoteBlur}
@@ -526,6 +531,11 @@ function Detail({ r, years, note, saveState, onNote, onNoteBlur, onClose }) {
               <CompanyMail companyKey={r.key} domains={r.domains} />
             </section>
           )}
+
+          <section>
+            <h3 className="dsec">People</h3>
+            <Contacts domain={String(r.domains || '').split(',')[0].trim()} />
+          </section>
 
           <section>
             <h3 className="dsec">Notes</h3>
@@ -679,6 +689,112 @@ function CompanyMail({ companyKey, domains }) {
           )}
         </article>
       ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- contacts */
+
+// Two deliberate steps. "Who works there" uses SalesIntel's non-credited
+// preview; "contact details" spends a credit per person. Keeping them apart
+// means browsing is free and spending is always something you chose to do.
+function Contacts({ domain }) {
+  const [state, setState] = useState({ status: 'idle', people: [], preview: true });
+
+  const load = useCallback(async (full) => {
+    setState((s) => ({ ...s, status: 'loading' }));
+    try {
+      const d = await getJSON(
+        `/api/salesintel?people=${encodeURIComponent(domain)}&limit=10${full ? '&full=1' : ''}`
+      );
+      setState({
+        status: 'done',
+        people: d.people || [],
+        preview: d.preview,
+        total: d.total,
+        note: d.note,
+      });
+    } catch (e) {
+      setState({ status: 'error', people: [], preview: true, note: e.message });
+    }
+  }, [domain]);
+
+  if (!domain) return <p className="dnote">No website on file, so there's nobody to look up.</p>;
+
+  return (
+    <div>
+      {state.status === 'idle' && (
+        <>
+          <button className="btn-wide" onClick={() => load(false)}>
+            Show who works there
+          </button>
+          <p className="dnote" style={{ marginTop: 8 }}>
+            Names and titles only, and free — SalesIntel doesn't charge for this.
+          </p>
+        </>
+      )}
+
+      {state.status === 'loading' && <p className="dnote">Looking…</p>}
+
+      {state.people.length > 0 && (
+        <div className="plist">
+          {state.people.map((p, i) => (
+            <article className="prow" key={p.id || i}>
+              <div className="prow-h">
+                <span className="prow-n">{p.name || '—'}</span>
+                {p.level && <span className="pill paid">{p.level}</span>}
+                {p.executive && <span className="pill lapsed">exec</span>}
+              </div>
+              {(p.title || p.department || p.location) && (
+                <div className="prow-t">
+                  {[p.title, p.department, p.location].filter(Boolean).join(' · ')}
+                </div>
+              )}
+              {(p.email || p.phone) && (
+                <div className="prow-c">
+                  {/* preview returns these masked — show them as-is rather than
+                      hiding them, so it is obvious what the credit buys */}
+                  {p.email && (p.masked
+                    ? <span className="dim">{p.email}</span>
+                    : <a href={`mailto:${p.email}`}>{p.email}</a>)}
+                  {p.phone && <span className={p.masked ? 'dim' : ''}>{p.phone}</span>}
+                </div>
+              )}
+              {p.linkedin && (
+                <a className="mrow-link" target="_blank" rel="noreferrer"
+                   href={p.linkedin.startsWith('http') ? p.linkedin : `https://${p.linkedin}`}>
+                  LinkedIn
+                </a>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+
+      {state.status === 'done' && state.preview && state.people.length > 0 && (
+        <>
+          <button className="btn-wide" style={{ marginTop: 9 }} onClick={() => load(true)}>
+            Get contact details
+          </button>
+          <p className="dnote" style={{ marginTop: 8 }}>
+            Email and phone are masked above. Unmasking costs one credit per
+            person{state.people.length ? ` — ${state.people.length} here` : ''}.
+            {state.total ? ` ${num(state.total)} contacts on file at this company.` : ''}
+          </p>
+        </>
+      )}
+
+      {state.status === 'done' && !state.preview && (
+        <p className="dnote" style={{ marginTop: 8 }}>
+          Full records pulled. Cached, so opening this again is free.
+        </p>
+      )}
+
+      {state.status === 'done' && state.people.length === 0 && (
+        <p className="dnote">{state.note || 'Nobody found at that domain.'}</p>
+      )}
+
+      {state.status === 'error' && <p className="dnote">{state.note}</p>}
     </div>
   );
 }

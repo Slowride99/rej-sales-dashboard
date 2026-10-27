@@ -95,31 +95,42 @@ async function callSalesIntelAt(base, params) {
   return r.json();
 }
  
-/** One person, flattened. Reads several possible spellings per field because
- *  the exact shape is unconfirmed — better a blank than a dropped record. */
+
 function normalizePerson(rec) {
   const p = rec.contact || rec.person || rec;
-  const first = p.first_name || p.firstname || '';
-  const last = p.last_name || p.lastname || '';
-  const full = p.full_name || p.name || [first, last].filter(Boolean).join(' ');
-  const loc = (rec.locations || p.locations || [])[0] || {};
+ 
+  const first = p.first_name || '';
+  const last = p.last_name || '';
+  const name = p.display_name || [first, last].filter(Boolean).join(' ');
+ 
+  const email = p.email || (p.work_emails || [])[0] || '';
+  const phone = (p.phone_numbers || [])[0]?.value || '';
+ 
+  // the PERSON's profile, not the company's
+  const li = (p.social_profiles || []).find(
+    (s) => /linkedin/i.test(s.type || '') || /linkedin\.com\/in\//i.test(s.url || '')
+  );
+ 
+  const masked = /\*/.test(email) || /\*/.test(phone);
  
   return {
-    name: full || '',
+    name,
     first,
     last,
-    title: p.job_title || p.title || p.position || '',
-    department: p.department || p.job_department || '',
-    level: p.seniority || p.job_level || p.level || '',
-    email: p.email || p.work_email || p.business_email || '',
-    phone: p.direct_phone || p.phone || p.mobile_phone || '',
-    linkedin: p.linkedin_url || p.linkedin || '',
-    city: loc.city || p.city || '',
-    state: loc.state || p.state || '',
-    company: rec.company_name || p.company_name || '',
-    id: p.contact_id || p.id || rec.match_id || null,
+    title: p.job_title || '',
+    department: p.job_department || '',
+    level: p.job_level || '',
+    executive: !!(p.is_executive || p.is_ev_contact),
+    email,
+    phone,
+    masked,                                   // preview redacts these
+    linkedin: li?.url || '',
+    location: p.location || '',               // "Madison, WI"
+    company: p.company_name || p.primary_name || '',
+    id: p.match_id || null,
   };
 }
+
 
 /** Flatten SalesIntel's nested shape into what the dashboard renders.
  *  Field names here are taken from a real /service/company response, not

@@ -36,6 +36,11 @@ import {
   envCheck, sb, accessTokenFor, graph, rowsFor, storeMessages, createSubscription,
 } from '../_outlook.js';
 
+// Vercel defaults to 10-15s, which is not enough to walk a mailbox. 60 is the
+// Hobby ceiling; Pro allows up to 300. The per-page checkpoint below means a
+// timeout costs one page of progress rather than the whole run.
+export const config = { maxDuration: 300 };
+
 const SELECT = [
   'id', 'internetMessageId', 'subject', 'sentDateTime', 'receivedDateTime',
   'from', 'sender', 'toRecipients', 'ccRecipients', 'parentFolderId',
@@ -69,7 +74,7 @@ export default async function handler(req, res) {
   if (bad) return res.status(500).json({ error: bad });
   if (!authorised(req)) return res.status(401).json({ error: 'unauthorized' });
 
-  const wantPages = Math.min(Number(req.query.pages) || 10, MAX_PAGES);
+  const wantPages = Math.min(Number(req.query.pages) || 5, MAX_PAGES);
   const backfill = !!req.query.backfill;
   const reset = !!req.query.reset;
   const subscribe = !!req.query.subscribe;
@@ -136,16 +141,28 @@ export default async function handler(req, res) {
           if (hitWatermark) { url = null; break; }
           nextLink = page['@odata.nextLink'] || null;
           url = nextLink;
+
+          // Checkpoint every page. Saving only at the end meant a function
+          // timeout threw away the whole walk and the next run restarted from
+          // the top — which on a large mailbox never finishes at all.
+          if (backfill) {
+            await sb(`outlook_accounts?id=eq.${account.id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                delta_link: nextLink,
+                last_sync_at: new Date().toISOString(),
+              }),
+            }).catch(() => {});
+          }
         }
 
-        const patch = { last_sync_at: new Date().toISOString(), last_error: null };
-        if (backfill) {
-          // Only the backfill keeps a resume point. Saving one during catch-up
-          // would skip whatever arrived while the walk was in progress.
-          patch.delta_link = nextLink;
-        }
+        // The resume point is already checkpointed per page above. Catch-up
+        // deliberately stores none: its watermark is read from the data, so a
+        // partial run just repeats a little work next time instead of skipping
+        // mail that arrived mid-walk.
         await sb(`outlook_accounts?id=eq.${account.id}`, {
-          method: 'PATCH', body: JSON.stringify(patch),
+          method: 'PATCH',
+          body: JSON.stringify({ last_sync_at: new Date().toISOString(), last_error: null }),
         });
 
         line.stored = stored;

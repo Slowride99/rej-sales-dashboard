@@ -49,7 +49,24 @@ const SELECT = [
 
 const BASE = process.env.APP_BASE_URL || '';
 const MAX_PAGES = 40;
-const PAGE = 50;
+const PAGE = 25;
+
+// Graph returns 504/503 UnknownError on heavy mailbox queries fairly often,
+// and it is usually transient. One retry with a pause turns most of them into
+// a success rather than a failed run.
+async function graphRetry(url, token, tries = 3) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await graph(url, token);
+    } catch (e) {
+      last = e;
+      if (e.status && e.status < 500) throw e;        // real error, not transient
+      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+  throw last;
+}
 
 function authorised(req) {
   const secret = process.env.CRON_SECRET;
@@ -113,7 +130,14 @@ export default async function handler(req, res) {
         let url;
         if (backfill && !reset && account.delta_link) {
           url = account.delta_link;                      // resume the walk
+        } else if (backfill) {
+          // NO $orderby here. Sorting an entire mailbox server-side is what
+          // makes Graph return 504 UnknownError on the first page. A backfill
+          // visits every message anyway, so the order it does so is irrelevant.
+          url = `/me/messages?$select=${SELECT}&$top=${PAGE}`;
         } else {
+          // Catch-up DOES need newest-first, because it stops at the watermark.
+          // That is affordable: it reads a page or two, not the whole mailbox.
           url = `/me/messages?$select=${SELECT}`
               + `&$orderby=receivedDateTime desc&$top=${PAGE}`;
         }
@@ -121,7 +145,7 @@ export default async function handler(req, res) {
         let stored = 0, scanned = 0, pages = 0, nextLink = null, hitWatermark = false;
 
         while (url && pages < wantPages) {
-          const page = await graph(url, at);
+          const page = await graphRetry(url, at);
           pages++;
 
           const rows = [];
@@ -131,8 +155,13 @@ export default async function handler(req, res) {
             // outreach that did not happen.
             if (msg.isDraft) continue;
 
+            // Only meaningful in catch-up mode, which is the ordered one. A
+            // backfill is unordered, so an old message early in the page says
+            // nothing about the rest and must not stop the walk.
             const when = msg.sentDateTime || msg.receivedDateTime;
-            if (stopAt && when && when <= stopAt) { hitWatermark = true; break; }
+            if (!backfill && stopAt && when && when <= stopAt) {
+              hitWatermark = true; break;
+            }
 
             rows.push(...rowsFor(msg, account));
           }

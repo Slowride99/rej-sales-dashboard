@@ -382,3 +382,7 @@
 .prow-c{ display:flex; flex-wrap:wrap; gap:3px 12px; margin-top:4px; font-size:11.5px }
 .prow-c a{ color:var(--paid) }
 .prow-c span{ color:var(--soft) }
+
+/* the domain chips in the People section are buttons, not labels */
+button.sic{ cursor:pointer; font:inherit; font-size:10.5px; padding:2px 8px }
+button.sic:hover{ border-color:var(--soft) }

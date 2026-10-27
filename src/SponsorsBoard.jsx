@@ -175,6 +175,21 @@ const n = (v) => (v == null ? null : Number(v));
 const num = (v) => (v == null ? '—' : Number(v).toLocaleString('en-US'));
 const cleanName = (s) => String(s || '').replace(/\s{2,}/g, ' ').trim();
 
+// A company's domains arrive comma-separated and alphabetically, so taking the
+// first one picks "cbre.co" over "cbre.com" — a parked typo domain with nothing
+// behind it. Prefer a .com, then the shortest, which lands on the real one.
+function bestDomain(domains) {
+  const list = String(domains || '').split(',').map((d) => d.trim().toLowerCase()).filter(Boolean);
+  if (!list.length) return '';
+  return list.slice().sort((a, b) => {
+    const score = (d) => (d.endsWith('.com') ? 100 : 0) - d.length;
+    return score(b) - score(a);
+  })[0];
+}
+
+const allDomains = (d) =>
+  [...new Set(String(d || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean))];
+
 function shortDate(iso) {
   if (!iso) return null;
   const [y, m, d] = String(iso).slice(0, 10).split('-');
@@ -471,7 +486,7 @@ function Detail({ r, years, note, saveState, onNote, onNoteBlur, onClose }) {
 
               <section>
                 <h3 className="dsec">People</h3>
-                <Contacts domain={r.si.domain} />
+                <Contacts domains={r.si.domain} />
               </section>
 
               <section>
@@ -534,7 +549,7 @@ function Detail({ r, years, note, saveState, onNote, onNoteBlur, onClose }) {
 
           <section>
             <h3 className="dsec">People</h3>
-            <Contacts domain={String(r.domains || '').split(',')[0].trim()} />
+            <Contacts domains={r.domains} />
           </section>
 
           <section>
@@ -639,9 +654,11 @@ function CompanyMail({ companyKey, domains }) {
 
   useEffect(() => {
     let alive = true;
-    const qs = domains
-      ? `domain=${encodeURIComponent(String(domains).split(',')[0].trim())}`
-      : `key=${encodeURIComponent(companyKey)}`;
+    // key= covers every domain the company owns, so prefer it; bestDomain is
+    // only the fallback, and it must not pick a parked typo domain either.
+    const qs = companyKey && !companyKey.startsWith('si:')
+      ? `key=${encodeURIComponent(companyKey)}`
+      : `domain=${encodeURIComponent(bestDomain(domains))}`;
     getJSON(`/api/mail?${qs}&top=15`)
       .then((d) => { if (alive) setState({ loading: false, ...d, messages: d.messages || [] }); })
       .catch(() => { if (alive) setState({ loading: false, messages: [] }); });
@@ -698,7 +715,9 @@ function CompanyMail({ companyKey, domains }) {
 // Two deliberate steps. "Who works there" uses SalesIntel's non-credited
 // preview; "contact details" spends a credit per person. Keeping them apart
 // means browsing is free and spending is always something you chose to do.
-function Contacts({ domain }) {
+function Contacts({ domains }) {
+  const options = allDomains(domains);
+  const [domain, setDomain] = useState(bestDomain(domains));
   const [state, setState] = useState({ status: 'idle', people: [], preview: true });
 
   const load = useCallback(async (full) => {
@@ -723,6 +742,18 @@ function Contacts({ domain }) {
 
   return (
     <div>
+      {options.length > 1 && (
+        <div className="si-chips" style={{ marginBottom: 8 }}>
+          {options.map((d) => (
+            <button key={d}
+                    className={`sic ${d === domain ? '' : 'sic-dim'}`}
+                    onClick={() => { setDomain(d); setState({ status: 'idle', people: [], preview: true }); }}>
+              {d}
+            </button>
+          ))}
+        </div>
+      )}
+
       {state.status === 'idle' && (
         <>
           <button className="btn-wide" onClick={() => load(false)}>
@@ -791,7 +822,10 @@ function Contacts({ domain }) {
       )}
 
       {state.status === 'done' && state.people.length === 0 && (
-        <p className="dnote">{state.note || 'Nobody found at that domain.'}</p>
+        <p className="dnote">
+          {state.note || `Nobody found at ${domain}.`}
+          {options.length > 1 && ' Try another domain above.'}
+        </p>
       )}
 
       {state.status === 'error' && <p className="dnote">{state.note}</p>}

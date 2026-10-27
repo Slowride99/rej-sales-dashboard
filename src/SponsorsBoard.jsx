@@ -598,7 +598,8 @@ function RecentContact({ series, onPickDomain }) {
         )}
 
         {state.messages.map((m, i) => (
-          <article className="mrow" key={i} onClick={() => onPickDomain?.(m.domain)}>
+          <article className="mrow" key={i} onClick={() => onPickDomain?.(m.domain)}
+                   title={`${cleanName(m.company)} — click to open the company`}>
             <div className="mrow-h">
               <span className={`mdir mdir-${m.direction}`}>
                 {m.direction === 'out' ? '→' : '←'}
@@ -607,6 +608,10 @@ function RecentContact({ series, onPickDomain }) {
               <span className="mrow-d">{mailDate(m.date)}</span>
             </div>
             <div className="mrow-s">{m.subject}</div>
+            {m.link && (
+              <a className="mrow-link" href={m.link} target="_blank" rel="noreferrer"
+                 onClick={(e) => e.stopPropagation()}>Open in Outlook</a>
+            )}
           </article>
         ))}
 
@@ -896,9 +901,28 @@ export default function SponsorsBoard() {
     return m;
   }, [board, discovered]);
 
+  // A note written against a SalesIntel find keeps working after a reload:
+  // the search results are gone from memory, but the key carries the domain,
+  // so a minimal row can be rebuilt from it rather than showing "si:acme.com"
+  // and doing nothing when clicked.
+  const rowForKey = useCallback((k) => {
+    const hit = byKey.get(k);
+    if (hit) return hit;
+    if (k.startsWith('si:')) {
+      const domain = k.slice(3);
+      return discoveredRow({ domain, name: domain });
+    }
+    return null;
+  }, [byKey]);
+
   const log = useMemo(() => Object.entries(notes)
     .filter(([, v]) => v?.body?.trim())
-    .map(([k, v]) => ({ key: k, company: byKey.get(k)?.company || k, ...v }))
+    .map(([k, v]) => ({
+      key: k,
+      company: byKey.get(k)?.company
+            || (k.startsWith('si:') ? k.slice(3) : k),
+      ...v,
+    }))
     .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''))),
     [notes, byKey]);
 
@@ -1010,7 +1034,7 @@ export default function SponsorsBoard() {
                     <div className="col-body">
                       {log.map((e) => (
                         <article className="ncard" key={e.key}
-                                 onClick={() => byKey.get(e.key) && setPick(byKey.get(e.key))}>
+                                 onClick={() => { const r = rowForKey(e.key); if (r) setPick(r); }}>
                           <div className="ncard-h">
                             <span className="ncard-co">{cleanName(e.company)}</span>
                             <span className="ncard-d">{shortDate(e.updated_at)}</span>

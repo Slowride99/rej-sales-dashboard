@@ -127,6 +127,9 @@ export default async function handler(req, res) {
 
     const rows = await sb(
       `outlook_messages?counterparty_domain=in.(${list})` +
+      // Auto-replies are stored but never shown — an out-of-office in a
+      // contact list reads as a conversation that did not happen.
+      '&is_auto=not.is.true' +
       '&select=subject,direction,sent_at,counterparty_email,counterparty_name,web_link' +
       `&order=sent_at.desc&limit=${top}`
     );

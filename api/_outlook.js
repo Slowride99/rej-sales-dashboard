@@ -150,6 +150,23 @@ const OWN = new Set(
     .split(',').map((d) => d.trim().toLowerCase()).filter(Boolean)
 );
 
+// Out-of-office bounces, read receipts and delivery failures are not contact.
+// Left uncounted they are actively misleading: an inbound auto-reply looks
+// exactly like a human answering, so "ever replied" quietly becomes "has an
+// out-of-office". Stored but flagged, so the counts can exclude them while the
+// record of what arrived stays intact.
+const AUTO_SUBJECT = new RegExp([
+  '^\\s*(re:\\s*)?\\[?external\\]?\\s*',          // optional [External] prefix
+  '(automatic reply|automatische antwort|auto[- ]?reply|autoreply|autoresponse',
+  '|out of (the )?office|undeliverable|delivery status notification',
+  '|mail delivery (failed|subsystem)|returned mail|read:|accepted:|declined:',
+  '|tentative:|cancelled:|canceled:)',
+].join(''), 'i');
+
+export function isAutomatic(msg) {
+  return AUTO_SUBJECT.test(String(msg.subject || ''));
+}
+
 export function domainOf(email) {
   const at = String(email || '').lastIndexOf('@');
   if (at < 0) return null;
@@ -164,6 +181,7 @@ export function isCountable(domain) {
 // One Graph message -> the rows we store. A mail to three people at two firms
 // becomes three rows, so per-company counts come out right.
 export function rowsFor(msg, account) {
+  const auto = isAutomatic(msg);
   const mine = String(account.user_email || '').toLowerCase();
   const from = String(msg.from?.emailAddress?.address || msg.sender?.emailAddress?.address || '').toLowerCase();
   const direction = from === mine ? 'out' : 'in';
@@ -191,6 +209,7 @@ export function rowsFor(msg, account) {
       counterparty_domain: domain,
       counterparty_name: (p?.emailAddress?.name || '').slice(0, 200) || null,
       folder: msg.parentFolderId || null,
+      is_auto: auto,
       // Deep link into Outlook. Mail.ReadBasic excludes body, previewBody and
       // attachments — webLink is none of those, so it comes through. Opening it
       // requires being signed in as the mailbox owner, so the thread stays

@@ -156,7 +156,7 @@ const OWN = new Set(
 // out-of-office". Stored but flagged, so the counts can exclude them while the
 // record of what arrived stays intact.
 const AUTO_SUBJECT = new RegExp([
-  '^\\s*(re:\\s*)?\\[?external\\]?\\s*',          // optional [External] prefix
+  '^\\s*(re:\\s*)?(\\[?external\\]?\\s*)?',       // the whole [External] prefix is optional
   '(automatic reply|automatische antwort|auto[- ]?reply|autoreply|autoresponse',
   '|out of (the )?office|undeliverable|delivery status notification',
   '|mail delivery (failed|subsystem)|returned mail|read:|accepted:|declined:',

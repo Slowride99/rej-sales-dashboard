@@ -39,6 +39,8 @@
 //
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
+import { requireSession } from './_session.js'; 
+
 const SB = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -92,6 +94,9 @@ async function domainsFor({ domain, key, q }) {
 }
 
 export default async function handler(req, res) {
+  const me = requireSession(req, res);
+  if (!me) return; 
+
   if (!SB || !SB_KEY) {
     return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set' });
   }

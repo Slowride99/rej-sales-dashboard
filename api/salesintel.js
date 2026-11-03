@@ -18,6 +18,8 @@
 //   SUPABASE_URL
 //   SUPABASE_SERVICE_ROLE_KEY
 
+import { requireSession } from './_session.js';
+
 const SI_BASE = 'https://api.salesintel.io/service/company';
 const CACHE_DAYS = 30;          // firmographics barely move
 const MAX_PAGE = 10;            // credits are per RECORD returned — keep small
@@ -171,6 +173,9 @@ function normalize(rec) {
 }
 
 export default async function handler(req, res) {
+  const me = requireSession(req, res);
+  if (!me) return; 
+
   if (!process.env.SALESINTEL_API_KEY) {
     return res.status(500).json({ error: 'SALESINTEL_API_KEY not set' });
   }

@@ -243,7 +243,10 @@ function useNotes(series) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ series, key, body }),
       });
-      setNotes((p) => ({ ...p, [key]: { body, updated_at: d.updated_at } }));
+      setNotes((p) => ({
+        ...p,
+        [key]: { body, updated_at: d.updated_at, updated_by: d.updated_by, mine: true },
+      }));
       setSaving((s) => ({ ...s, [key]: 'saved' }));
       setTimeout(() => setSaving((s) => {
         const { [key]: _g, ...rest } = s; return rest;
@@ -282,11 +285,16 @@ function NoteBox({ k, note, saveState, onNote, onNoteBlur, placeholder }) {
         onChange={(e) => onNote(k, e.target.value)}
         onBlur={(e) => onNoteBlur(k, e.target.value)}
       />
-      {saveState && (
+      {saveState ? (
         <span className={`save save-${saveState}`}>
           {saveState === 'saving' ? 'saving…' : saveState === 'saved' ? 'saved' : "didn't save"}
         </span>
-      )}
+      ) : note?.updated_by && !note.mine ? (
+        // someone else's note — worth knowing before you type over it
+        <span className="save" title={note.updated_by}>
+          {note.updated_by.split('@')[0].replace(/[._]/g, ' ')}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -1207,6 +1215,11 @@ export default function SponsorsBoard() {
                             <span className="ncard-d">{shortDate(e.updated_at)}</span>
                           </div>
                           <p className="ncard-b">{e.body}</p>
+                          {e.updated_by && (
+                            <p className="ncard-by">
+                              {e.mine ? 'you' : e.updated_by.split('@')[0].replace(/[._]/g, ' ')}
+                            </p>
+                          )}
                         </article>
                       ))}
                       {log.length === 0 && (

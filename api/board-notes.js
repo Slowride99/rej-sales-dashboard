@@ -21,6 +21,8 @@
 //   SUPABASE_URL
 //   SUPABASE_SERVICE_ROLE_KEY
 
+import { requireSession } from './_session.js';
+
 const SB = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -48,6 +50,9 @@ async function readBody(req) {
 }
 
 export default async function handler(req, res) {
+  const me = requireSession(req, res);
+  if (!me) return;                       // 401 already sent
+
   if (!SB || !SB_KEY) {
     return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set' });
   }
@@ -60,12 +65,21 @@ export default async function handler(req, res) {
 
       const rows = await sb(
         `event_notes?series=eq.${encodeURIComponent(series)}` +
-        '&select=company_key,body,updated_at&limit=2000'
+        '&select=company_key,body,updated_at,updated_by&limit=2000'
       );
 
       const notes = {};
-      for (const r of rows) notes[r.company_key] = { body: r.body, updated_at: r.updated_at };
-      return res.json({ notes });
+      for (const r of rows) {
+        notes[r.company_key] = {
+          body: r.body,
+          updated_at: r.updated_at,
+          updated_by: r.updated_by || null,
+          // so the UI can mark a note as the reader's own without comparing
+          // addresses in the component
+          mine: !!r.updated_by && r.updated_by === me.email,
+        };
+      }
+      return res.json({ notes, me: me.email });
     }
 
     /* ----------------------------------------------------------- write ---- */
@@ -96,10 +110,17 @@ export default async function handler(req, res) {
           company_key: key,
           body: text.slice(0, 4000),
           updated_at: now,
+          // whoever last touched it owns it — a note edited by someone else is
+          // now theirs, which is what the timestamp already implied
+          updated_by: me.email,
         }]),
       });
 
-      return res.json({ ok: true, updated_at: saved?.[0]?.updated_at || now });
+      return res.json({
+        ok: true,
+        updated_at: saved?.[0]?.updated_at || now,
+        updated_by: me.email,
+      });
     }
 
     res.setHeader('Allow', 'GET, POST');

@@ -21,6 +21,8 @@
 //   ANTHROPIC_MODEL   — set this to whatever api/ask.js already uses, so both
 //                       endpoints stay on one model. Default below is a guess.
 
+import { requireSession } from './_session.js';
+
 const KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
 
@@ -89,6 +91,9 @@ async function readBody(req) {
 }
 
 export default async function handler(req, res) {
+  const me = requireSession(req, res);
+  if (!me) return; 
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'POST' });

@@ -17,10 +17,17 @@ const SIGNIN_SCOPES = 'openid profile email User.Read';
 
 export default async function handler(req, res) {
   const redirectUri = process.env.MS_AUTH_REDIRECT_URI;
-  if (!process.env.MS_CLIENT_ID || !redirectUri || !process.env.SESSION_SECRET) {
-    return res.status(500).json({
-      error: 'missing env: MS_CLIENT_ID, MS_AUTH_REDIRECT_URI, SESSION_SECRET',
-    });
+
+  // Name only what is actually missing — listing all three regardless sends
+  // you looking at variables that were fine.
+  const missing = Object.entries({
+    MS_CLIENT_ID: process.env.MS_CLIENT_ID,
+    MS_AUTH_REDIRECT_URI: redirectUri,
+    SESSION_SECRET: process.env.SESSION_SECRET,
+  }).filter(([, v]) => !v).map(([k]) => k);
+
+  if (missing.length) {
+    return res.status(500).json({ error: `missing env: ${missing.join(', ')}` });
   }
 
   // `next` lets a 401 bounce someone back where they were. Only a relative

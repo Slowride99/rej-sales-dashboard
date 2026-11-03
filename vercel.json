@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/cron/outlook-renew", "schedule": "0 */6 * * *" },
+    { "path": "/api/outlook/sync",       "schedule": "0 */4 * * *" }
+  ]
+}

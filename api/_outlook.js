@@ -17,7 +17,7 @@ const REDIRECT_URI = process.env.MS_REDIRECT_URI;
 const SB = process.env.SUPABASE_URL;
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-export const SCOPES = 'offline_access openid profile email User.Read Mail.ReadBasic';
+export const SCOPES = 'offline_access openid profile email User.Read Mail.ReadBasic Mail.Send';
 export const GRAPH = 'https://graph.microsoft.com/v1.0';
 
 export const authority = () => `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0`;

@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     // ---- no series named: the picker, straight off the summary ----
     if (!series) {
       const rows = await sb(
-        'mv_event_series_summary?select=*&order=gap.desc,sponsors.desc&limit=100'
+        'mv_event_series_summary?select=*&order=gap.desc,sponsors.desc&limit=500'
       );
       return res.json({ count: rows.length, series: rows });
     }

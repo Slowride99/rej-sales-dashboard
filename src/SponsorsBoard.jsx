@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './sponsors-board.css';
 
-const DEFAULT_SERIES = 'REDnews DFW Industrial Real Estate Summit';
+const DEFAULT_SERIES = 'Capital Markets Summit MN';
 const NAV = ['Dashboard', 'Sponsors', 'Speakers', 'Outreach', 'Companies', 'Reports'];
 
 const CHIPS = [

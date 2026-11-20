@@ -363,7 +363,7 @@ function YearGrid({ years, sponsored, showElsewhere, onToggle, onPick }) {
               )}
               <span className="gcell-st">
                 <span className={`pill ${r.signed ? 'paid' : 'lapsed'}`}>
-                  {r.signed ? `Sponsored ${maxY}` : `Last in ${maxY - r.lapsedBy}`}
+                  {r.signed ? `In ${maxY}` : `Last ${maxY - r.lapsedBy}`}
                 </span>
               </span>
             </button>
@@ -385,7 +385,7 @@ function YearGrid({ years, sponsored, showElsewhere, onToggle, onPick }) {
             <tr key={r.key}>
               <td>{cleanName(r.company)}</td>
               {years.map((y) => <td key={y}>{r.ys.includes(y) ? 'yes' : 'no'}</td>)}
-              <td>{r.signed ? `Sponsored ${maxY}` : `Last in ${maxY - r.lapsedBy}`}</td>
+              <td>{r.signed ? `In ${maxY}` : `Last ${maxY - r.lapsedBy}`}</td>
             </tr>
           ))}
         </tbody>
@@ -1136,7 +1136,7 @@ export default function SponsorsBoard() {
               {picker.length === 0 && <option value={series}>{series}</option>}
               {picker.map((p) => (
                 <option key={p.series} value={p.series}>
-                  {p.series} — {p.sponsors} sponsors,
+                  {p.series} — {p.sponsors} sponsors
                 </option>
               ))}
             </select>

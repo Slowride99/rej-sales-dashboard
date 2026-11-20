@@ -363,7 +363,7 @@ function YearGrid({ years, sponsored, showElsewhere, onToggle, onPick }) {
               )}
               <span className="gcell-st">
                 <span className={`pill ${r.signed ? 'paid' : 'lapsed'}`}>
-                  {r.signed ? 'Signed' : `Lapsed ${r.lapsedBy}`}
+                  {r.signed ? `Sponsored ${maxY}` : `Last in ${maxY - r.lapsedBy}`}
                 </span>
               </span>
             </button>
@@ -373,8 +373,8 @@ function YearGrid({ years, sponsored, showElsewhere, onToggle, onPick }) {
 
       <p className="panel-f">
         {rows.length} companies, {years[0]}–{maxY} ·{' '}
-        <span className="ok">{signedCount} signed for {maxY}</span> ·{' '}
-        <span className="warn">{rows.length - signedCount} lapsed</span>
+        <span className="ok">{signedCount} sponsored in {maxY}</span> ·{' '}
+        <span className="warn">{rows.length - signedCount} from earlier years</span> 
       </p>
 
       <table className="a11y-table">
@@ -385,7 +385,7 @@ function YearGrid({ years, sponsored, showElsewhere, onToggle, onPick }) {
             <tr key={r.key}>
               <td>{cleanName(r.company)}</td>
               {years.map((y) => <td key={y}>{r.ys.includes(y) ? 'yes' : 'no'}</td>)}
-              <td>{r.signed ? 'Signed' : `Lapsed ${r.lapsedBy}`}</td>
+              <td>{r.signed ? `Sponsored ${maxY}` : `Last in ${maxY - r.lapsedBy}`}</td>
             </tr>
           ))}
         </tbody>
@@ -1136,7 +1136,7 @@ export default function SponsorsBoard() {
               {picker.length === 0 && <option value={series}>{series}</option>}
               {picker.map((p) => (
                 <option key={p.series} value={p.series}>
-                  {p.series} — {p.sponsors} sponsors, {p.gap} gap
+                  {p.series} — {p.sponsors} sponsors,
                 </option>
               ))}
             </select>
@@ -1271,7 +1271,7 @@ export default function SponsorsBoard() {
                       <p className="col-s">
                         {ai ? `Answering: "${ai.question || q}"`
                             : chip ? CHIPS.find((c) => c.id === chip).label
-                            : 'Ranked by what they buy from us elsewhere. Anyone signed for this year is out.'}
+                            : 'Ranked by what they buy from us elsewhere. Last years sponsors are in the next column.'}
                       </p>
                     </header>
                     <div className="col-body">
@@ -1284,7 +1284,7 @@ export default function SponsorsBoard() {
 
                   <section className="col">
                     <header className="col-h">
-                      <h2 className="col-t">Signed <span className="ct">{signedNow.length}</span></h2>
+                      <h2 className="col-t">Renew <span className="ct">{signedNow.length}</span></h2>
                       <p className="col-s">Sponsoring {maxY}, from PheedLoop.</p>
                     </header>
                     <div className="col-body">
@@ -1302,7 +1302,7 @@ export default function SponsorsBoard() {
                           </p>
                         </article>
                       ))}
-                      {signedNow.length === 0 && <p className="col-note">Nothing signed yet.</p>}
+                      {signedNow.length === 0 && <p className="col-note">No sponsors from the latest year.</p>}
                     </div>
                   </section>
 

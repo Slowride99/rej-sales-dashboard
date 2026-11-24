@@ -1,0 +1,223 @@
+/* accounts-board.css — Ad accounts screen.
+   Same tokens as sponsors-board.css (the two data colours passed the dataviz
+   checks in both modes there; reused unchanged, not re-picked). Every class is
+   prefixed ab- so nothing here can restyle the sponsors board. */
+
+.ab-shell{
+  --bg:#12161c; --panel:#1a1f28; --card:#151a21; --edge:#252c38; --hair:#1f2630;
+  --ink:#e8ecf2; --soft:#8e9aab; --faint:#5d6878;
+  --tx:#BC2030; --tx-ink:#e8697a;
+  --paid:#3fa387; --paid-wash:rgba(63,163,135,.13); --paid-edge:rgba(63,163,135,.30);
+  --lapsed:#c88029; --lapsed-wash:rgba(200,128,41,.13); --lapsed-edge:rgba(200,128,41,.30);
+  --hover:rgba(255,255,255,.028);
+  --shadow:0 18px 50px rgba(0,0,0,.5);
+
+  display:grid; grid-template-columns:208px 1fr;
+  min-height:100vh; background:var(--bg); color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-variant-numeric:tabular-nums;
+}
+.ab-shell[data-theme="light"]{
+  --bg:#f5f6f8; --panel:#fff; --card:#fafbfc; --edge:#dde2e8; --hair:#e9edf1;
+  --ink:#131920; --soft:#55616d; --faint:#79848f;
+  --tx-ink:#BC2030;
+  --paid:#1d8465; --paid-wash:rgba(29,132,101,.09); --paid-edge:rgba(29,132,101,.26);
+  --lapsed:#a3651c; --lapsed-wash:rgba(163,101,28,.10); --lapsed-edge:rgba(163,101,28,.28);
+  --hover:rgba(0,0,0,.022);
+  --shadow:0 18px 50px rgba(20,30,45,.16);
+}
+.ab-shell *{ box-sizing:border-box }
+@media (max-width:1040px){ .ab-shell{ grid-template-columns:1fr } }
+
+/* ---------------------------------------------------------------- sidebar */
+
+.ab-side{ border-right:1px solid var(--edge); padding:22px 0; background:var(--bg) }
+.ab-brand{ font-size:20px; font-weight:700; padding:0 20px 22px; letter-spacing:-.01em }
+.ab-brand span{ color:var(--tx-ink) }
+.ab-side nav{ display:flex; flex-direction:column }
+.ab-navi{
+  border-left:2px solid transparent; color:var(--soft); font-size:14px;
+  padding:11px 20px; white-space:nowrap; text-decoration:none; display:block;
+}
+a.ab-navi:hover{ color:var(--ink) }
+.ab-navi-on{ background:var(--panel); color:var(--ink); border-left-color:var(--tx); font-weight:500 }
+@media (max-width:1040px){
+  .ab-side{ border-right:0; border-bottom:1px solid var(--edge); padding:16px 0 0 }
+  .ab-brand{ padding-bottom:12px }
+  .ab-side nav{ flex-direction:row; overflow-x:auto; padding:0 12px }
+  .ab-navi{ border-left:0; border-bottom:2px solid transparent; padding:10px 14px }
+  .ab-navi-on{ border-bottom-color:var(--tx) }
+}
+
+/* ----------------------------------------------------------------- header */
+
+.ab-main{ padding:24px 28px 60px; min-width:0 }
+@media (max-width:640px){ .ab-main{ padding:18px 16px 48px } }
+
+.ab-top{ display:flex; justify-content:space-between; align-items:flex-start;
+         gap:20px; flex-wrap:wrap; margin-bottom:18px }
+.ab-top-r{ display:flex; gap:8px; align-items:center }
+.ab-eyebrow{ color:var(--tx-ink); font-size:11.5px; font-weight:600; margin:0 0 6px;
+             letter-spacing:.08em; text-transform:uppercase }
+.ab-h1{ font-size:28px; font-weight:600; margin:0; letter-spacing:-.02em; line-height:1.2 }
+.ab-sub{ color:var(--soft); font-size:13.5px; margin:7px 0 0; max-width:62ch }
+
+.ab-picker,.ab-themebtn,.ab-in,.ab-search{
+  background:var(--panel); color:var(--ink); border:1px solid var(--edge);
+  border-radius:6px; font:inherit; font-size:13px;
+}
+.ab-picker{ padding:9px 12px }
+.ab-themebtn{ padding:9px 14px; color:var(--soft); cursor:pointer }
+.ab-themebtn:hover{ color:var(--ink) }
+.ab-shell :focus-visible{ outline:2px solid var(--tx-ink); outline-offset:2px }
+
+.ab-err{ background:var(--lapsed-wash); border:1px solid var(--lapsed-edge); color:var(--ink);
+         border-radius:8px; padding:10px 14px; margin:0 0 14px; font-size:13.5px }
+.ab-dim{ color:var(--soft); font-size:13px; margin:6px 0 }
+
+/* ------------------------------------------------------------------ tiles */
+
+.ab-tiles{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin-bottom:14px }
+@media (max-width:1180px){ .ab-tiles{ grid-template-columns:repeat(3,minmax(0,1fr)) } }
+@media (max-width:640px){ .ab-tiles{ grid-template-columns:repeat(2,minmax(0,1fr)) } }
+
+.ab-tile{
+  background:var(--panel); border:1px solid var(--edge); border-radius:10px;
+  padding:14px 16px; text-align:left; cursor:pointer; color:inherit; font:inherit;
+  display:flex; flex-direction:column; gap:2px; min-width:0;
+}
+.ab-tile:hover{ border-color:var(--faint) }
+.ab-tile-on{ border-color:var(--ink); box-shadow:inset 0 0 0 1px var(--ink) }
+.ab-tile-n{ font-size:26px; font-weight:600; letter-spacing:-.02em; line-height:1.15 }
+.ab-tile-l{ font-size:13.5px; font-weight:500 }
+.ab-tile-h{ font-size:12px; color:var(--soft) }
+
+/* -------------------------------------------------------------- filter bar */
+
+.ab-bar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px }
+.ab-search{ padding:9px 12px; flex:1 1 260px; min-width:0; max-width:420px }
+.ab-search::placeholder{ color:var(--faint) }
+.ab-chips{ display:flex; gap:6px; align-items:center; flex-wrap:wrap }
+.ab-chips-l{ color:var(--soft); font-size:12.5px; margin-right:2px }
+.ab-chip{
+  background:none; border:1px solid var(--edge); color:var(--soft); border-radius:999px;
+  padding:6px 12px; font:inherit; font-size:12.5px; cursor:pointer;
+}
+.ab-chip:hover{ color:var(--ink); border-color:var(--faint) }
+.ab-chip-on{ background:var(--ink); color:var(--bg); border-color:var(--ink) }
+.ab-chip-on:hover{ color:var(--bg) }
+
+/* ------------------------------------------------------------------ table */
+
+.ab-panel{ background:var(--panel); border:1px solid var(--edge); border-radius:10px }
+.ab-legend{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+            padding:12px 16px; color:var(--soft); font-size:12.5px; border-bottom:1px solid var(--hair) }
+.ab-legend-k{ display:flex; align-items:center; gap:6px; flex-wrap:wrap }
+.ab-legend-k .ab-y{ margin-left:10px }
+.ab-scroll{ overflow-x:auto }
+
+.ab-table{ width:100%; border-collapse:collapse; font-size:13.5px; min-width:1060px }
+.ab-table th{
+  text-align:left; font-weight:500; font-size:12px; color:var(--soft);
+  padding:9px 10px; border-bottom:1px solid var(--hair); white-space:nowrap;
+}
+.ab-table td{ padding:9px 10px; border-bottom:1px solid var(--hair); vertical-align:middle }
+.ab-table tbody tr{ cursor:pointer }
+.ab-table tbody tr:hover{ background:var(--hover) }
+.ab-table tbody tr:last-child td{ border-bottom:0 }
+.ab-row-on{ background:var(--hover) }
+.ab-num{ text-align:right; white-space:nowrap }
+.ab-table th.ab-num{ text-align:right }
+
+.ab-co{ display:flex; align-items:center; gap:10px; background:none; border:0; padding:0;
+        color:inherit; font:inherit; text-align:left; cursor:pointer; min-width:0 }
+.ab-mono{
+  flex:0 0 30px; height:30px; border-radius:6px; background:var(--card); border:1px solid var(--edge);
+  color:var(--soft); font-size:10.5px; font-weight:600; display:grid; place-items:center; letter-spacing:.02em;
+}
+.ab-co-t{ display:flex; flex-direction:column; min-width:0 }
+.ab-co-n{ font-weight:500; max-width:230px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.ab-co-s{ color:var(--soft); font-size:12px; white-space:nowrap }
+.ab-co-s em{ font-style:normal; color:var(--faint) }
+
+/* years: filled = ad, ring = other purchase, dot = nothing */
+.ab-years{ display:inline-grid; grid-auto-flow:column; grid-auto-columns:17px; align-items:center; justify-items:center }
+.ab-years-h b{ font-weight:500; font-size:11px; color:var(--soft) }
+.ab-y{ width:5px; height:5px; border-radius:50%; background:var(--edge); display:inline-block; flex:none }
+.ab-y-ad{ width:10px; height:10px; background:var(--paid) }
+.ab-y-other{ width:10px; height:10px; background:transparent; border:1.5px solid var(--faint) }
+
+.ab-bought{ white-space:nowrap }
+.ab-bought span{ color:var(--soft); font-size:12.5px }
+.ab-bought span + span::before{ content:" · "; color:var(--faint) }
+
+.ab-pill{ display:inline-block; border-radius:999px; padding:2px 9px; font-size:12px; font-weight:500;
+          border:1px solid var(--edge); color:var(--soft); white-space:nowrap }
+.ab-pill-active{ background:var(--paid-wash); border-color:var(--paid-edge); color:var(--paid) }
+.ab-pill-lapsed{ background:var(--lapsed-wash); border-color:var(--lapsed-edge); color:var(--lapsed) }
+.ab-last{ color:var(--soft); font-size:12px; margin-left:8px; white-space:nowrap }
+
+.ab-workcell{ white-space:nowrap }
+.ab-in{ padding:6px 8px; font-size:12.5px; color-scheme:dark }
+.ab-shell[data-theme="light"] .ab-in{ color-scheme:light }
+.ab-workcell select.ab-in{ width:128px }
+.ab-workcell input.ab-in{ width:124px }
+.ab-in-due{ border-color:var(--lapsed); color:var(--lapsed) }
+
+.ab-empty{ padding:26px 16px; color:var(--soft); text-align:center; margin:0 }
+.ab-more{ display:block; width:100%; background:none; border:0; border-top:1px solid var(--hair);
+          color:var(--soft); font:inherit; font-size:13px; padding:12px; cursor:pointer }
+.ab-more:hover{ color:var(--ink) }
+
+/* ------------------------------------------------------------- slide-over */
+
+.ab-scrim{ position:fixed; inset:0; background:rgba(0,0,0,.45); display:flex; justify-content:flex-end; z-index:40 }
+.ab-detail{
+  width:min(560px,100%); height:100%; overflow-y:auto; background:var(--panel);
+  border-left:1px solid var(--edge); box-shadow:var(--shadow); padding:22px 24px 40px;
+}
+.ab-d-head{ display:flex; justify-content:space-between; gap:16px; align-items:flex-start }
+.ab-d-name{ font-size:21px; font-weight:600; margin:0; letter-spacing:-.01em; line-height:1.25 }
+.ab-d-sub{ color:var(--soft); font-size:13px; margin:4px 0 0 }
+.ab-x{ background:none; border:1px solid var(--edge); color:var(--soft); border-radius:6px;
+       padding:6px 12px; font:inherit; font-size:12.5px; cursor:pointer; flex:none }
+.ab-x:hover{ color:var(--ink) }
+.ab-d-facts{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:14px 0 0; font-size:13px; color:var(--soft) }
+.ab-d-else{ margin:10px 0 0; font-size:13px; color:var(--soft) }
+
+.ab-sec{ margin-top:22px; padding-top:18px; border-top:1px solid var(--hair) }
+.ab-h3{ font-size:13px; font-weight:600; margin:0 0 10px }
+.ab-ct{ color:var(--faint); font-weight:400; margin-left:4px }
+.ab-work{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px }
+.ab-work .ab-in{ padding:8px 10px; font-size:13px }
+.ab-note{ width:100%; background:var(--card); color:var(--ink); border:1px solid var(--edge);
+          border-radius:6px; padding:10px 12px; font:inherit; font-size:13.5px; resize:vertical }
+.ab-note::placeholder{ color:var(--faint) }
+
+.ab-people{ list-style:none; margin:0; padding:0 }
+.ab-people li{ display:flex; justify-content:space-between; gap:14px; padding:8px 0; border-bottom:1px solid var(--hair) }
+.ab-people li:last-child{ border-bottom:0 }
+.ab-p-main{ display:flex; flex-direction:column; min-width:0 }
+.ab-p-name{ font-weight:500 }
+.ab-p-title{ color:var(--soft); font-size:12.5px }
+.ab-p-reach{ display:flex; flex-direction:column; align-items:flex-end; font-size:12.5px; color:var(--soft); min-width:0 }
+.ab-p-reach a{ color:var(--ink); overflow-wrap:anywhere; text-align:right }
+.ab-optout{ color:var(--lapsed); font-weight:500 }
+
+.ab-yr{ margin-bottom:12px }
+.ab-yr-h{ display:flex; justify-content:space-between; font-size:12.5px; font-weight:600; color:var(--soft);
+          padding-bottom:4px; border-bottom:1px solid var(--hair); margin-bottom:4px }
+.ab-sale{ display:grid; grid-template-columns:62px 1fr auto; gap:10px; align-items:baseline; padding:4px 0; font-size:13px }
+.ab-sale-off{ color:var(--soft) }
+.ab-sale-what{ min-width:0; overflow-wrap:anywhere }
+.ab-sale-what em{ font-style:normal; color:var(--faint) }
+.ab-sale-amt{ white-space:nowrap }
+.ab-kind{ font-size:11.5px; color:var(--soft); border:1px solid var(--edge); border-radius:4px; padding:1px 6px; text-align:center }
+.ab-kind-print,.ab-kind-email,.ab-kind-banner{ color:var(--paid); border-color:var(--paid-edge); background:var(--paid-wash) }
+
+.ab-mail{ display:grid; grid-template-columns:64px 1fr auto; gap:10px; padding:5px 0; font-size:13px; align-items:baseline }
+.ab-mail-dir,.ab-mail-when{ color:var(--soft); font-size:12px; white-space:nowrap }
+.ab-mail a{ grid-column:2 / -1; color:var(--tx-ink); font-size:12.5px }
+
+.ab-link{ background:none; border:0; padding:6px 0 0; color:var(--tx-ink); font:inherit; font-size:13px; cursor:pointer }
+.ab-link:hover{ text-decoration:underline }

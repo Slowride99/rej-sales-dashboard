@@ -232,7 +232,7 @@ function Detail({ row, office, note, onNote, onSave, onClose }) {
                     <div className="ab-p-reach">
                       {c.email_opt_out
                         ? <span className="ab-optout">Do not email</span>
-                        : c.email && <a href={`mailto:${c.email}`}>{c.email}</a>}
+                        : c.email && <a href={`mailto:${c.email}`} target="_blank" rel="noreferrer">{c.email}</a>}
                       {(c.phone || c.mobile) && <span>{c.phone || c.mobile}</span>}
                     </div>
                   </li>
